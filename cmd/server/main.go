@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
@@ -15,9 +16,12 @@ import (
 
 	"github.com/jphastings/game-status/internal/api"
 	"github.com/jphastings/game-status/internal/authstore"
+	"github.com/jphastings/game-status/internal/cartridge"
 	"github.com/jphastings/game-status/internal/config"
 	"github.com/jphastings/game-status/internal/db"
 	"github.com/jphastings/game-status/internal/keytrace"
+	"github.com/jphastings/game-status/internal/steam"
+	"github.com/jphastings/game-status/internal/sync"
 	"github.com/jphastings/game-status/internal/webauth"
 )
 
@@ -86,6 +90,20 @@ func main() {
 
 	meHandler := &api.MeHandler{Conn: conn}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
+
+	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
+	cartridgeClient := cartridge.New(cfg.CartridgeHost, cfg.CartridgeClientKey, conn)
+	steamClient := steam.New(cfg.SteamAPIKey)
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := sync.RunTick(context.Background(), conn, steamClient, cartridgeClient, writer, time.Now()); err != nil {
+				slog.Error("sync tick", "err", err)
+			}
+		}
+	}()
 
 	distFS, err := fs.Sub(frontendFS, "web/dist")
 	if err != nil {
