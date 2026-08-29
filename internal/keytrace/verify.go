@@ -41,32 +41,32 @@ func parsePublicJWK(raw string) (*ecdsa.PublicKey, error) {
 // verifyJWS checks a compact JWS (header.payload.signature) was signed by pub
 // over exactly the canonical form of claimData — mirrors keytrace's
 // crypto/signature.ts verifyES256Signature.
-func verifyJWS(claimData map[string]string, jws string, pub *ecdsa.PublicKey) (bool, error) {
+//
+// It is purely computational over an attestation blob the claimant fully
+// controls, so every way it can go wrong — wrong part count, undecodable
+// parts, a wrong-length signature — means "this claim does not verify", never
+// "we couldn't tell". Reporting those as errors would let a claimant keep a
+// revoked claim alive forever by corrupting their own attestation, since every
+// caller treats an error as "uncertain, retry later".
+func verifyJWS(claimData map[string]string, jws string, pub *ecdsa.PublicKey) bool {
 	parts := strings.Split(jws, ".")
 	if len(parts) != 3 {
-		return false, fmt.Errorf("malformed JWS: expected 3 parts, got %d", len(parts))
+		return false
 	}
 	headerB64, payloadB64, sigB64 := parts[0], parts[1], parts[2]
 
-	expectedPayload := canonicalizeStringMap(claimData)
 	actualPayload, err := base64.RawURLEncoding.DecodeString(payloadB64)
-	if err != nil {
-		return false, fmt.Errorf("decode payload: %w", err)
-	}
-	if string(actualPayload) != expectedPayload {
-		return false, nil
+	if err != nil || string(actualPayload) != canonicalizeStringMap(claimData) {
+		return false
 	}
 
 	sigBytes, err := base64.RawURLEncoding.DecodeString(sigB64)
-	if err != nil {
-		return false, fmt.Errorf("decode signature: %w", err)
-	}
-	if len(sigBytes) != 64 {
-		return false, fmt.Errorf("unexpected signature length %d, want 64", len(sigBytes))
+	if err != nil || len(sigBytes) != 64 {
+		return false
 	}
 	r := new(big.Int).SetBytes(sigBytes[:32])
 	s := new(big.Int).SetBytes(sigBytes[32:])
 
 	hash := sha256.Sum256([]byte(headerB64 + "." + payloadB64))
-	return ecdsa.Verify(pub, hash[:], r, s), nil
+	return ecdsa.Verify(pub, hash[:], r, s)
 }

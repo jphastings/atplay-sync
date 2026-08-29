@@ -38,6 +38,9 @@ func (f *CachedKeyFetcher) FetchPublicJWK(ctx context.Context, keyURI string) (s
 	if !ok {
 		return "", fmt.Errorf("invalid key at-uri: %s", keyURI)
 	}
+	if collection != ServerKeyCollection {
+		return "", fmt.Errorf("key at-uri %s is not a %s record", keyURI, ServerKeyCollection)
+	}
 
 	parsedDID, err := syntax.ParseDID(did)
 	if err != nil {
@@ -57,6 +60,11 @@ func (f *CachedKeyFetcher) FetchPublicJWK(ctx context.Context, keyURI string) (s
 	var rec serverKeyRecord
 	if err := json.Unmarshal(*resp.Value, &rec); err != nil {
 		return "", fmt.Errorf("parse key record: %w", err)
+	}
+	// The cache is write-once (no TTL, ON CONFLICT DO NOTHING), so caching an
+	// empty key here would poison every future lookup of this URI permanently.
+	if rec.PublicJWK == "" {
+		return "", fmt.Errorf("key record %s has no publicJwk", keyURI)
 	}
 
 	if err := appdb.SetKeytraceKey(ctx, f.Conn, appdb.KeytraceKey{AtURI: keyURI, PublicJWK: rec.PublicJWK}); err != nil {

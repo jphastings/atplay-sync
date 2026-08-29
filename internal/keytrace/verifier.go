@@ -27,8 +27,11 @@ func (v *Verifier) VerifyAttestation(ctx context.Context, did string, claim Clai
 		return false, nil
 	}
 
-	signerDID, ok := didFromAtURI(sig.Src)
-	if !ok || !v.TrustedDIDs[signerDID] {
+	// sig.Src is claimant-controlled: it must name a signing-key record in a
+	// trusted signer's key collection, not some other record they'd rather we
+	// read a "public key" out of.
+	signerDID, collection, _, ok := parseAtURI(sig.Src)
+	if !ok || !v.TrustedDIDs[signerDID] || collection != ServerKeyCollection {
 		return false, nil
 	}
 
@@ -38,14 +41,18 @@ func (v *Verifier) VerifyAttestation(ctx context.Context, did string, claim Clai
 	}
 	pub, err := parsePublicJWK(rawJWK)
 	if err != nil {
-		return false, nil // malformed key -> bad claim, not a transient error
+		// The signing key lives in keytrace's repo, not the claimant's: a
+		// problem there says nothing about whether this user's claim is
+		// genuine, so it must read as "uncertain, retry" — callers turn a
+		// false into a destructive invalidation of the user's own records.
+		return false, fmt.Errorf("parse signing key %s: %w", sig.Src, err)
 	}
 
 	signedData, ok := reconstructSignedData(did, claim, sig)
 	if !ok {
 		return false, nil
 	}
-	return verifyJWS(signedData, sig.Attestation, pub)
+	return verifyJWS(signedData, sig.Attestation, pub), nil
 }
 
 func reconstructSignedData(did string, claim Claim, sig ClaimSignature) (map[string]string, bool) {
@@ -84,18 +91,4 @@ func containsString(list []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func didFromAtURI(atURI string) (string, bool) {
-	const prefix = "at://"
-	if len(atURI) <= len(prefix) || atURI[:len(prefix)] != prefix {
-		return "", false
-	}
-	rest := atURI[len(prefix):]
-	for i := 0; i < len(rest); i++ {
-		if rest[i] == '/' {
-			return rest[:i], true
-		}
-	}
-	return "", false
 }
