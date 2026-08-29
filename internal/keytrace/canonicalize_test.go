@@ -14,3 +14,11 @@ func TestCanonicalizeStringMap_SortsKeysAndEscapes(t *testing.T) {
 		t.Fatalf("got %s, want %s", got, want)
 	}
 }
+
+func TestCanonicalizeStringMap_DoesNotHTMLEscape(t *testing.T) {
+	got := canonicalizeStringMap(map[string]string{"identity.account": "Bob & Alice <tag>"})
+	want := `{"identity.account":"Bob & Alice <tag>"}`
+	if got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}

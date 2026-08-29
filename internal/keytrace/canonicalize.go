@@ -2,6 +2,7 @@
 package keytrace
 
 import (
+	"bytes"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -25,12 +26,20 @@ func canonicalizeStringMap(m map[string]string) string {
 		if i > 0 {
 			b.WriteByte(',')
 		}
-		kb, _ := json.Marshal(k)
-		vb, _ := json.Marshal(m[k])
-		b.Write(kb)
+		b.WriteString(encodeJSONString(k))
 		b.WriteByte(':')
-		b.Write(vb)
+		b.WriteString(encodeJSONString(m[k]))
 	}
 	b.WriteByte('}')
 	return b.String()
+}
+
+// encodeJSONString matches JavaScript's JSON.stringify (and RFC 8785), which
+// does not HTML-escape &, <, > — unlike json.Marshal's default behavior.
+func encodeJSONString(s string) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return strings.TrimSuffix(buf.String(), "\n")
 }
