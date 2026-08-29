@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"net/http"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"github.com/bluesky-social/indigo/atproto/identity"
+	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"github.com/jphastings/game-status/internal/api"
 	"github.com/jphastings/game-status/internal/authstore"
 	"github.com/jphastings/game-status/internal/config"
 	"github.com/jphastings/game-status/internal/db"
+	"github.com/jphastings/game-status/internal/keytrace"
 	"github.com/jphastings/game-status/internal/webauth"
 )
 
@@ -62,8 +66,37 @@ func main() {
 	mux.HandleFunc("GET /login", oauthHandlers.Login)
 	mux.HandleFunc("GET /oauth/callback", oauthHandlers.Callback)
 
+	dir := identity.DefaultDirectory()
+	trustedDIDs, err := resolveTrustedDIDs(context.Background(), dir, keytrace.DefaultTrustedSignerHandles)
+	if err != nil {
+		log.Fatalf("resolve trusted keytrace signers: %v", err)
+	}
+	verifier := &keytrace.Verifier{
+		Keys:        &keytrace.CachedKeyFetcher{Dir: dir, Conn: conn},
+		TrustedDIDs: trustedDIDs,
+	}
+
+	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier}
+	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
+
 	slog.Info("listening", "addr", cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
+}
+
+func resolveTrustedDIDs(ctx context.Context, dir identity.Directory, handles []string) (map[string]bool, error) {
+	dids := map[string]bool{}
+	for _, h := range handles {
+		handle, err := syntax.ParseHandle(h)
+		if err != nil {
+			return nil, err
+		}
+		ident, err := dir.LookupHandle(ctx, handle)
+		if err != nil {
+			return nil, err
+		}
+		dids[ident.DID.String()] = true
+	}
+	return dids, nil
 }
