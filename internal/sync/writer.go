@@ -57,9 +57,8 @@ func (w *ATProtoWriter) PutStatus(ctx context.Context, did string, status ActorS
 	if err != nil {
 		return fmt.Errorf("validate status record: %w", err)
 	}
-	validate := true
 	_, err = agnostic.RepoPutRecord(ctx, client, &agnostic.RepoPutRecord_Input{
-		Collection: StatusCollection, Repo: did, Rkey: statusRkey, Record: record, Validate: &validate,
+		Collection: StatusCollection, Repo: did, Rkey: statusRkey, Record: record,
 	})
 	return err
 }

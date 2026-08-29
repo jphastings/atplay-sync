@@ -117,6 +117,43 @@ func TestRunTick_PlayingUnresolvableGame_SkipsWriteButRecordsSession(t *testing.
 	}
 }
 
+func TestRunTick_SteamOmitsAccount_SkipsWithoutDeleteOrSessionReset(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedEligibleUser(t, conn, "did:plc:a", "765")
+
+	startedAt := time.Now().Add(-30 * time.Minute)
+	if err := appdb.SetSessionStart(ctx, conn, "did:plc:a", "steam", "271590", startedAt); err != nil {
+		t.Fatalf("SetSessionStart: %v", err)
+	}
+	before, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart (before): %v", err)
+	}
+	if before == nil {
+		t.Fatalf("expected seeded session_starts row before tick")
+	}
+
+	// Steam's response simply doesn't mention this account — not an explicit not-playing entry.
+	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{}}
+	writer := &fakeWriter{}
+
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, time.Now()); err != nil {
+		t.Fatalf("RunTick: %v", err)
+	}
+	if len(writer.puts) != 0 || len(writer.deletes) != 0 {
+		t.Fatalf("got puts=%+v deletes=%+v, want neither", writer.puts, writer.deletes)
+	}
+
+	after, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart (after): %v", err)
+	}
+	if after == nil || after.GameKey != before.GameKey || !after.StartedAt.Equal(before.StartedAt) {
+		t.Fatalf("session_starts changed: before=%+v after=%+v, want untouched", before, after)
+	}
+}
+
 func TestRunTick_NotPlaying_Deletes(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)

@@ -58,7 +58,12 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 	}
 
 	for steamID, did := range steamIDToDID {
-		if err := tickOne(ctx, conn, resolver, writer, did, summaries[steamID], now); err != nil {
+		summary, ok := summaries[steamID]
+		if !ok {
+			slog.Warn("steam omitted account from response, skipping this tick", "steam_id", steamID, "did", did)
+			continue
+		}
+		if err := tickOne(ctx, conn, resolver, writer, did, summary, now); err != nil {
 			slog.Error("sync tick failed for account", "did", did, "err", err) // one account's failure shouldn't stop the rest
 		}
 	}
