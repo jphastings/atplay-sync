@@ -1,3 +1,5 @@
 /.mlf
 /web/node_modules/
 /cmd/server/web/dist/
+/server
+/game-status.db

@@ -1,0 +1,37 @@
+# game-status
+
+A small Go service that keeps your `games.gamesgamesgamesgames.actor.status`
+record live on your own atproto PDS while you play. Sign in with atproto OAuth,
+prove your Steam identity with a cryptographically-verified
+[keytrace](https://keytrace.dev) claim, and the service polls Steam every five
+minutes to write (and clear) your play status. A Jetstream subscription watches
+`dev.keytrace.claim` so a revoked claim stops the sync in real time, with a
+daily sweep as the backstop.
+
+## Build
+
+The binary embeds the built frontend from `cmd/server/web/dist`, which is a
+build artifact and is not in git — so `go build ./...` cannot work on a fresh
+clone until the frontend is built. Use the Makefile, which does both:
+
+```sh
+make build   # pnpm install + vite build, then go build ./cmd/server
+make test    # same, then go test ./...
+```
+
+Requires Go and [pnpm](https://pnpm.io).
+
+## Configuration
+
+All via environment variables. Required:
+
+| Variable | What it is |
+| --- | --- |
+| `STEAM_API_KEY` | A [Steam Web API key](https://steamcommunity.com/dev/apikey). |
+| `CARTRIDGE_CLIENT_KEY` | Your own client key for cartridge.dev's game lookup API — ask the cartridge/HappyView team. The key in their public frontend bundle identifies *their* app, not yours; don't reuse it. |
+| `BASE_URL` | The public HTTPS origin this service is reachable on, e.g. `https://game-status.example.com`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
+| `OAUTH_PRIVATE_KEY` | A P-256 confidential-client key in multibase form. Generate with [`goat`](https://github.com/bluesky-social/goat): `goat key generate -t P-256`. |
+| `SESSION_SECRET` | 32 random bytes, hex-encoded, for signing session cookies: `openssl rand -hex 32`. |
+
+Optional: `LISTEN_ADDR` (default `:8080`), `DB_PATH` (default
+`game-status.db`), `OAUTH_KEY_ID` (default `1`), `CARTRIDGE_HOST`.
