@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -26,6 +27,7 @@ const (
 type wireEvent struct {
 	DID    string `json:"did"`
 	Kind   string `json:"kind"`
+	TimeUS int64  `json:"time_us"`
 	Commit *struct {
 		Operation  string          `json:"operation"`
 		Collection string          `json:"collection"`
@@ -39,9 +41,17 @@ type EventHandler func(ctx context.Context, ev Event) error
 type Listener struct {
 	cancel context.CancelFunc
 	done   chan struct{}
+	// cursorUS is the time_us of the last event this listener finished
+	// processing, replayed from on reconnect. Only run/readLoop — one
+	// goroutine — touches it. It is deliberately not persisted: a process
+	// restart falls back to the daily sweep.
+	cursorUS int64
 }
 
-func dial(ctx context.Context, host string, collections, dids []string) (*websocket.Conn, error) {
+// dialer is a package var so tests can reach a local TLS test server.
+var dialer = websocket.DefaultDialer
+
+func dial(ctx context.Context, host string, collections, dids []string, cursorUS int64) (*websocket.Conn, error) {
 	u := url.URL{Scheme: "wss", Host: host, Path: "/subscribe"}
 	q := u.Query()
 	for _, c := range collections {
@@ -50,14 +60,17 @@ func dial(ctx context.Context, host string, collections, dids []string) (*websoc
 	for _, d := range dids {
 		q.Add("wantedDids", d)
 	}
+	if cursorUS > 0 {
+		q.Set("cursor", strconv.FormatInt(cursorUS, 10))
+	}
 	u.RawQuery = q.Encode()
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), nil)
+	conn, _, err := dialer.DialContext(ctx, u.String(), nil)
 	return conn, err
 }
 
 func connect(ctx context.Context, host string, collections, dids []string, handler EventHandler) (*Listener, error) {
-	conn, err := dial(ctx, host, collections, dids)
+	conn, err := dial(ctx, host, collections, dids, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +84,9 @@ func connect(ctx context.Context, host string, collections, dids []string, handl
 // run reads from conn until it dies, then redials with capped exponential
 // backoff until it succeeds or ctx is cancelled by Close. Without this a
 // server restart or network blip would silently take realtime revocation
-// offline until the next Manager.Restart, which may never come.
+// offline until the next Manager.Restart, which may never come. The redial
+// replays from the last event's cursor, so the detection-plus-backoff window
+// isn't a hole where revocations vanish until the next daily sweep.
 func (l *Listener) run(ctx context.Context, conn *websocket.Conn, host string, collections, dids []string, handler EventHandler) {
 	defer close(l.done)
 
@@ -89,9 +104,9 @@ func (l *Listener) run(ctx context.Context, conn *websocket.Conn, host string, c
 			case <-time.After(backoff):
 			}
 
-			next, err := dial(ctx, host, collections, dids)
+			next, err := dial(ctx, host, collections, dids, l.cursorUS)
 			if err == nil {
-				slog.Info("jetstream reconnected", "host", host, "dids", len(dids))
+				slog.Info("jetstream reconnected", "host", host, "dids", len(dids), "cursor", l.cursorUS)
 				conn, backoff = next, minBackoff
 				break
 			}
@@ -138,12 +153,17 @@ func (l *Listener) readLoop(ctx context.Context, conn *websocket.Conn, handler E
 		_ = extend()
 
 		var we wireEvent
-		if err := json.Unmarshal(raw, &we); err != nil || we.Kind != "commit" || we.Commit == nil {
+		if err := json.Unmarshal(raw, &we); err != nil {
 			continue
 		}
 
-		ev := Event{DID: we.DID, Collection: we.Commit.Collection, Rkey: we.Commit.Rkey, Operation: Operation(we.Commit.Operation), Record: we.Commit.Record}
-		l.handle(ctx, handler, ev)
+		if we.Kind == "commit" && we.Commit != nil {
+			ev := Event{DID: we.DID, Collection: we.Commit.Collection, Rkey: we.Commit.Rkey, Operation: Operation(we.Commit.Operation), Record: we.Commit.Record}
+			l.handle(ctx, handler, ev)
+		}
+		if we.TimeUS > 0 {
+			l.cursorUS = we.TimeUS // only advance past events we've finished with
+		}
 	}
 }
 
