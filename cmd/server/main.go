@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"log"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,9 @@ import (
 	"github.com/jphastings/game-status/internal/keytrace"
 	"github.com/jphastings/game-status/internal/webauth"
 )
+
+//go:embed web/dist
+var frontendFS embed.FS
 
 func main() {
 	cfg, err := config.Load()
@@ -78,6 +82,11 @@ func main() {
 
 	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier}
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
+
+	meHandler := &api.MeHandler{Conn: conn}
+	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
+
+	mux.Handle("GET /", http.FileServerFS(frontendFS))
 
 	slog.Info("listening", "addr", cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {
