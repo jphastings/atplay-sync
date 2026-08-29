@@ -55,7 +55,7 @@ func main() {
 	}
 	oauthApp := oauth.NewClientApp(&oauthConfig, &authstore.SQLiteStore{Conn: conn})
 
-	oauthHandlers := &api.OAuthHandlers{App: oauthApp, Conn: conn, Cookies: webauth.SignedCookies{Secret: cfg.SessionSecret}}
+	oauthHandlers := &api.OAuthHandlers{App: oauthApp, Conn: conn, Cookies: webauth.SignedCookies{Secret: cfg.SessionSecret}, BaseURL: cfg.BaseURL}
 
 	mux.HandleFunc("GET /oauth/client-metadata.json", oauthHandlers.ClientMetadata)
 	mux.HandleFunc("GET /oauth/jwks.json", oauthHandlers.JWKS)

@@ -18,8 +18,12 @@ type SignedCookies struct {
 }
 
 func (s SignedCookies) Encode(did string) string {
-	exp := time.Now().Add(sessionTTL).Unix()
-	payload := base64.RawURLEncoding.EncodeToString([]byte(did)) + "." + strconv.FormatInt(exp, 10)
+	return s.EncodeWithTTL(did, sessionTTL)
+}
+
+func (s SignedCookies) EncodeWithTTL(value string, ttl time.Duration) string {
+	exp := time.Now().Add(ttl).Unix()
+	payload := base64.RawURLEncoding.EncodeToString([]byte(value)) + "." + strconv.FormatInt(exp, 10)
 	sig := s.sign(payload)
 	return payload + "." + sig
 }

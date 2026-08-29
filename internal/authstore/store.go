@@ -65,7 +65,25 @@ func (s *SQLiteStore) GetAuthRequestInfo(ctx context.Context, state string) (*oa
 	return &info, nil
 }
 
+type stateCaptureKey struct{}
+
+// WithStateCapture returns a derived context, plus a pointer that will hold the OAuth
+// `state` of the next auth request saved under that context.
+//
+// indigo's ClientApp.StartAuthFlow generates `state` internally and returns only a
+// redirect URL — a PAR authorization URL carrying `client_id` and `request_uri`, with no
+// top-level `state` param — so a caller that needs to bind the flow to the browser that
+// started it has no other way to learn the value. StartAuthFlow does pass its context
+// through to Store.SaveAuthRequestInfo, so we read it there.
+func WithStateCapture(ctx context.Context) (context.Context, *string) {
+	var state string
+	return context.WithValue(ctx, stateCaptureKey{}, &state), &state
+}
+
 func (s *SQLiteStore) SaveAuthRequestInfo(ctx context.Context, info oauth.AuthRequestData) error {
+	if captured, ok := ctx.Value(stateCaptureKey{}).(*string); ok {
+		*captured = info.State
+	}
 	raw, err := json.Marshal(info)
 	if err != nil {
 		return err

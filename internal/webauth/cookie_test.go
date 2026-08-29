@@ -17,7 +17,7 @@ func TestEncodeDecode_RoundTrips(t *testing.T) {
 func TestDecode_RejectsTamperedSignature(t *testing.T) {
 	c := SignedCookies{Secret: []byte("test-secret")}
 	token := c.Encode("did:plc:abc")
-	tampered := token[:len(token)-1] + "0"
+	tampered := token + "0"
 	if _, err := c.Decode(tampered); err == nil {
 		t.Fatal("expected error for tampered cookie, got nil")
 	}

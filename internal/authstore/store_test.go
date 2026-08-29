@@ -40,6 +40,49 @@ func TestSQLiteStore_SessionRoundTrip(t *testing.T) {
 	}
 }
 
+// indigo re-saves the same (did, sessionID) on every inline token refresh, so the
+// upsert — not the insert — is the hot path.
+func TestSQLiteStore_SaveSessionOverwritesExisting(t *testing.T) {
+	conn := openTestDB(t)
+	store := &SQLiteStore{Conn: conn}
+	did := syntax.DID("did:plc:abc")
+
+	for _, token := range []string{"at-1", "at-2"} {
+		in := oauth.ClientSessionData{AccountDID: did, SessionID: "sess-1", AccessToken: token, RefreshToken: "rt-1"}
+		if err := store.SaveSession(context.Background(), in); err != nil {
+			t.Fatalf("SaveSession(%s): %v", token, err)
+		}
+	}
+
+	out, err := store.GetSession(context.Background(), did, "sess-1")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if out.AccessToken != "at-2" {
+		t.Fatalf("got AccessToken=%s, want at-2", out.AccessToken)
+	}
+
+	var rows int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM oauth_sessions WHERE did = ? AND session_id = ?`, did.String(), "sess-1").Scan(&rows); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("got %d rows, want 1", rows)
+	}
+}
+
+func TestWithStateCapture(t *testing.T) {
+	store := &SQLiteStore{Conn: openTestDB(t)}
+	ctx, state := WithStateCapture(context.Background())
+
+	if err := store.SaveAuthRequestInfo(ctx, oauth.AuthRequestData{State: "state-1", PKCEVerifier: "verifier-1"}); err != nil {
+		t.Fatalf("SaveAuthRequestInfo: %v", err)
+	}
+	if *state != "state-1" {
+		t.Fatalf("got %q, want state-1", *state)
+	}
+}
+
 func TestSQLiteStore_AuthRequestRoundTripAndDelete(t *testing.T) {
 	store := &SQLiteStore{Conn: openTestDB(t)}
 
