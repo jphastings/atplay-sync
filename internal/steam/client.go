@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -53,6 +54,11 @@ func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) (map
 		resp, err := c.HTTPClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("steam GetPlayerSummaries: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			resp.Body.Close()
+			return nil, fmt.Errorf("steam GetPlayerSummaries: unexpected status %d: %s", resp.StatusCode, body)
 		}
 		var parsed summariesResponse
 		err = json.NewDecoder(resp.Body).Decode(&parsed)

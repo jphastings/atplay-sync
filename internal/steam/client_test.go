@@ -63,6 +63,23 @@ func TestGetPlayerSummaries_ParsesCurrentGame(t *testing.T) {
 	}
 }
 
+func TestGetPlayerSummaries_ReturnsErrorOnNonOKStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"error": "invalid API key"})
+	}))
+	defer server.Close()
+
+	c := &Client{APIKey: "key", HTTPClient: http.DefaultClient, BaseURL: server.URL}
+	got, err := c.GetPlayerSummaries(context.Background(), []string{"76500000000000000"})
+	if err == nil {
+		t.Fatalf("GetPlayerSummaries: expected error, got nil (got=%+v)", got)
+	}
+	if !strings.Contains(err.Error(), "401") {
+		t.Fatalf("error = %q, want it to mention status code 401", err.Error())
+	}
+}
+
 func equalInts(a, b []int) bool {
 	if len(a) != len(b) {
 		return false
