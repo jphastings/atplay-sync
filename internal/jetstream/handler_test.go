@@ -98,6 +98,24 @@ func TestHandleEvent_CreateVerifiedRealClaim_Upserts(t *testing.T) {
 	}
 }
 
+func TestHandleEvent_VerifiedStatusButBadSignature_NoUpsert(t *testing.T) {
+	// status:"verified" alone must never be trusted — the signature has to
+	// actually check out. Same technique as keytrace's
+	// TestVerifyAttestation_RejectsSubstitutedSubject: swap in a different
+	// identity.subject than the one the attestation JWT signed over.
+	store := &fakeStore{}
+	deleter := &fakeDeleter{}
+
+	tampered := strings.Replace(realClaimJSON, `"subject":"76561197994000231"`, `"subject":"1"`, 1)
+	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpCreate, Record: []byte(tampered)}
+	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(store.upserts) != 0 {
+		t.Fatalf("got upserts=%+v, want none — status is verified but the signature doesn't cover this subject", store.upserts)
+	}
+}
+
 func TestHandleEvent_UpdateToNonVerifiedStatus_InvalidatesTrackedRecord(t *testing.T) {
 	atURI := "at://did:plc:ephkzpinhaqcabtkugtbzrwu/dev.keytrace.claim/3mkwoifsquv2p"
 	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", RecordURI: atURI}}
