@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -29,6 +30,42 @@ func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.discoverFor(r.Context(), did); err != nil {
 		http.Error(w, "recheck failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type enableRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
+	did, ok := DIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "not signed in", http.StatusUnauthorized)
+		return
+	}
+
+	var body enableRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if body.Enabled {
+		claim, err := db.GetSteamClaim(r.Context(), h.Conn, did)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if claim == nil {
+			http.Error(w, "no verified steam claim — recheck first", http.StatusConflict)
+			return
+		}
+	}
+
+	if err := db.SetSteamEnabled(r.Context(), h.Conn, did, body.Enabled); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

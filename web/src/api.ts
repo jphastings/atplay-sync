@@ -3,6 +3,7 @@ export interface Me {
   steamSubject?: string
   steamDisplayName?: string
   steamEnabled: boolean
+  live?: { game: string; platform?: string }
 }
 
 export async function getMe(): Promise<Me | null> {
@@ -15,4 +16,11 @@ export async function getMe(): Promise<Me | null> {
 export async function recheckClaim(): Promise<void> {
   const res = await fetch('/api/steam/recheck', { method: 'POST' })
   if (!res.ok) throw new Error(`POST /api/steam/recheck: ${res.status}`)
+}
+
+export async function setSteamEnabled(enabled: boolean): Promise<void> {
+  const res = await fetch('/api/steam/enabled', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) throw new Error(`POST /api/steam/enabled: ${res.status}`)
 }

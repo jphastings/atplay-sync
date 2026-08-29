@@ -87,8 +87,9 @@ func main() {
 
 	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier}
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
+	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
-	meHandler := &api.MeHandler{Conn: conn}
+	meHandler := &api.MeHandler{Conn: conn, App: oauthApp}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
 
 	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
