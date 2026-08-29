@@ -68,7 +68,7 @@ func TestDiscover_UpsertsOnRealVerifiedClaim(t *testing.T) {
 	}}
 	verifier := &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
 
-	if err := Discover(ctx, client, verifier, conn, realClaimDID); err != nil {
+	if err := Discover(ctx, client, verifier, conn, &fakeSweepDeleter{}, realClaimDID); err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
 
@@ -86,11 +86,13 @@ func TestDiscover_InvalidatesWhenNoVerifiedClaimFound(t *testing.T) {
 	conn := openTestDB(t)
 	appdb.UpsertUser(ctx, conn, realClaimDID)
 	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: realClaimDID, Subject: "old", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.SetSessionStart(ctx, conn, realClaimDID, appdb.SteamSource, "271590", time.Now())
 
 	client := &fakeLexClient{records: nil} // the claim is gone
 	verifier := &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
+	deleter := &fakeSweepDeleter{}
 
-	if err := Discover(ctx, client, verifier, conn, realClaimDID); err != nil {
+	if err := Discover(ctx, client, verifier, conn, deleter, realClaimDID); err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
 
@@ -100,5 +102,17 @@ func TestDiscover_InvalidatesWhenNoVerifiedClaimFound(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatalf("got %+v, want nil after the claim disappears", got)
+	}
+	// The live record must not be left stranded on the PDS, and the session
+	// bookkeeping must not survive to be reused if they re-verify later.
+	if len(deleter.deleted) != 1 {
+		t.Fatalf("deleted = %v, want the live status record removed", deleter.deleted)
+	}
+	session, err := appdb.GetSessionStart(ctx, conn, realClaimDID, appdb.SteamSource)
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if session != nil {
+		t.Fatalf("session start = %+v, want it cleared", session)
 	}
 }

@@ -22,6 +22,7 @@ type SteamHandlers struct {
 	App       *oauth.ClientApp
 	Conn      *sql.DB
 	Verifier  *keytrace.Verifier
+	Deleter   db.StatusDeleter
 	Jetstream *jetstream.Manager
 }
 
@@ -35,6 +36,10 @@ func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "recheck failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	// A recheck can restore a claim that was revoked while steam_enabled
+	// stayed true, in which case SetEnabled never fires and nothing else would
+	// put this DID back on the Jetstream watch list.
+	h.restartJetstream(did)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -72,20 +77,24 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.Jetstream != nil {
-		// Don't block the HTTP response on a reconnect; Restart reads the DID
-		// list itself so two concurrent toggles can't apply a stale one.
-		go func() {
-			err := h.Jetstream.Restart(context.Background(), func(ctx context.Context) ([]string, error) {
-				return db.ListSteamEnabledDIDs(ctx, h.Conn)
-			})
-			if err != nil {
-				slog.Error("jetstream restart after steam toggle", "did", did, "enabled", body.Enabled, "err", err)
-			}
-		}()
-	}
-
+	h.restartJetstream(did)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// restartJetstream re-applies the watch list off the request path: Restart
+// reads the DID list itself, so two concurrent callers can't apply a stale one.
+func (h *SteamHandlers) restartJetstream(did string) {
+	if h.Jetstream == nil {
+		return
+	}
+	go func() {
+		err := h.Jetstream.Restart(context.Background(), func(ctx context.Context) ([]string, error) {
+			return db.ListSteamEnabledDIDs(ctx, h.Conn)
+		})
+		if err != nil {
+			slog.Error("jetstream restart", "did", did, "err", err)
+		}
+	}()
 }
 
 func (h *SteamHandlers) discoverFor(ctx context.Context, did string) error {
@@ -104,5 +113,5 @@ func (h *SteamHandlers) discoverFor(ctx context.Context, did string) error {
 	if err != nil {
 		return err
 	}
-	return claims.Discover(ctx, sess.APIClient(), h.Verifier, h.Conn, did)
+	return claims.Discover(ctx, sess.APIClient(), h.Verifier, h.Conn, h.Deleter, did)
 }

@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// SteamSource is the session_starts.source value for Steam-driven sessions.
+const SteamSource = "steam"
+
 type SessionStart struct {
 	GameKey   string
 	StartedAt time.Time

@@ -18,7 +18,7 @@ import (
 // Discover re-scans the user's own dev.keytrace.claim collection for a
 // verified, cryptographically-checked Steam claim and upserts/clears
 // steam_claims accordingly. See spec's "Claim indexing".
-func Discover(ctx context.Context, client lexutil.LexClient, verifier *keytrace.Verifier, conn *sql.DB, did string) error {
+func Discover(ctx context.Context, client lexutil.LexClient, verifier *keytrace.Verifier, conn *sql.DB, deleter appdb.StatusDeleter, did string) error {
 	var cursor string
 	for {
 		resp, err := agnostic.RepoListRecords(ctx, client, keytrace.ClaimCollection, cursor, 100, did, false)
@@ -54,5 +54,5 @@ func Discover(ctx context.Context, client lexutil.LexClient, verifier *keytrace.
 	}
 
 	// No verified Steam claim found this pass — whatever we had before is stale.
-	return appdb.InvalidateSteamClaim(ctx, conn, did)
+	return appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource)
 }

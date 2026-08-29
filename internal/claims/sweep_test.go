@@ -54,6 +54,36 @@ func TestRunSweep_InvalidatesWhenRecordDeleted(t *testing.T) {
 	}
 }
 
+// A missed Jetstream *update* — re-verified against a different SteamID at the
+// same record — is exactly what the sweep is the backstop for. Confirming the
+// signature isn't enough; the stored subject has to catch up, or we keep
+// polling the old one.
+func TestRunSweep_ReconcilesAChangedSubject(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	appdb.UpsertUser(ctx, conn, realClaimDID)
+	appdb.SetSteamEnabled(ctx, conn, realClaimDID, true)
+	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: realClaimDID, Subject: "an-old-steamid", ClaimURI: "x", RecordURI: "real-uri", LastVerifiedAt: time.Now()})
+
+	var realClaim keytrace.Claim
+	if err := json.Unmarshal([]byte(realClaimJSON), &realClaim); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{"real-uri": &realClaim}}
+
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), &fakeSweepDeleter{}); err != nil {
+		t.Fatalf("RunSweep: %v", err)
+	}
+
+	got, err := appdb.GetSteamClaim(ctx, conn, realClaimDID)
+	if err != nil {
+		t.Fatalf("GetSteamClaim: %v", err)
+	}
+	if got == nil || got.Subject != "76561197994000231" {
+		t.Fatalf("got %+v, want the subject from the re-fetched claim", got)
+	}
+}
+
 func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)

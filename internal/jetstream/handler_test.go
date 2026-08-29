@@ -42,55 +42,50 @@ type fakeStore struct {
 	invalidated bool
 }
 
-func (f *fakeStore) GetSteamClaim(ctx context.Context, did string) (*appdb.SteamClaim, error) { return f.claim, nil }
+func (f *fakeStore) GetSteamClaim(ctx context.Context, did string) (*appdb.SteamClaim, error) {
+	return f.claim, nil
+}
 func (f *fakeStore) UpsertSteamClaim(ctx context.Context, c appdb.SteamClaim) error {
 	f.upserts = append(f.upserts, c)
 	return nil
 }
-func (f *fakeStore) InvalidateSteamClaim(ctx context.Context, did string) error {
+
+// InvalidateClaim stands for the whole cleanup — claim row, session_starts
+// and the PDS status record — which DBStore delegates to db.InvalidateClaim.
+func (f *fakeStore) InvalidateClaim(ctx context.Context, did string) error {
 	f.invalidated = true
-	return nil
-}
-
-type fakeDeleter struct{ deleted []string }
-
-func (f *fakeDeleter) DeleteStatus(ctx context.Context, did string) error {
-	f.deleted = append(f.deleted, did)
 	return nil
 }
 
 func TestHandleEvent_DeleteMatchingTrackedRecord_Invalidates(t *testing.T) {
 	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:a", RecordURI: "at://did:plc:a/dev.keytrace.claim/abc"}}
-	deleter := &fakeDeleter{}
 
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "abc", Operation: OpDelete}
-	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if !store.invalidated || len(deleter.deleted) != 1 {
-		t.Fatalf("got invalidated=%v deleted=%v, want both to have fired", store.invalidated, deleter.deleted)
+	if !store.invalidated {
+		t.Fatal("expected the tracked claim to be invalidated")
 	}
 }
 
 func TestHandleEvent_DeleteOfUnrelatedRecord_NoOp(t *testing.T) {
 	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:a", RecordURI: "at://did:plc:a/dev.keytrace.claim/current"}}
-	deleter := &fakeDeleter{}
 
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "some-old-rkey", Operation: OpDelete}
-	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if store.invalidated || len(deleter.deleted) != 0 {
-		t.Fatalf("got invalidated=%v deleted=%v, want neither (this rkey isn't the tracked claim)", store.invalidated, deleter.deleted)
+	if store.invalidated {
+		t.Fatal("expected no invalidation — this rkey isn't the tracked claim")
 	}
 }
 
 func TestHandleEvent_CreateVerifiedRealClaim_Upserts(t *testing.T) {
 	store := &fakeStore{}
-	deleter := &fakeDeleter{}
 
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpCreate, Record: []byte(realClaimJSON)}
-	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 	if len(store.upserts) != 1 || store.upserts[0].Subject != "76561197994000231" {
@@ -104,11 +99,10 @@ func TestHandleEvent_VerifiedStatusButBadSignature_NoUpsert(t *testing.T) {
 	// TestVerifyAttestation_RejectsSubstitutedSubject: swap in a different
 	// identity.subject than the one the attestation JWT signed over.
 	store := &fakeStore{}
-	deleter := &fakeDeleter{}
 
 	tampered := strings.Replace(realClaimJSON, `"subject":"76561197994000231"`, `"subject":"1"`, 1)
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpCreate, Record: []byte(tampered)}
-	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 	if len(store.upserts) != 0 {
@@ -119,23 +113,21 @@ func TestHandleEvent_VerifiedStatusButBadSignature_NoUpsert(t *testing.T) {
 func TestHandleEvent_UpdateToNonVerifiedStatus_InvalidatesTrackedRecord(t *testing.T) {
 	atURI := "at://did:plc:ephkzpinhaqcabtkugtbzrwu/dev.keytrace.claim/3mkwoifsquv2p"
 	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", RecordURI: atURI}}
-	deleter := &fakeDeleter{}
 
 	retracted := strings.Replace(realClaimJSON, `"status":"verified"`, `"status":"retracted"`, 1)
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpUpdate, Record: []byte(retracted)}
-	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if !store.invalidated || len(deleter.deleted) != 1 {
-		t.Fatalf("got invalidated=%v deleted=%v, want both", store.invalidated, deleter.deleted)
+	if !store.invalidated {
+		t.Fatal("expected a retracted claim to be invalidated")
 	}
 }
 
 func TestHandleEvent_NonSteamType_Ignored(t *testing.T) {
 	store := &fakeStore{}
-	deleter := &fakeDeleter{}
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "x", Operation: OpCreate, Record: []byte(`{"type":"github","status":"verified"}`)}
-	if err := HandleEvent(context.Background(), store, deleter, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 	if len(store.upserts) != 0 || store.invalidated {

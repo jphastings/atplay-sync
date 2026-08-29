@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
 	"github.com/bluesky-social/indigo/atproto/atclient"
@@ -14,7 +15,6 @@ import (
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	appdb "github.com/jphastings/game-status/internal/db"
-	"github.com/jphastings/game-status/internal/jetstream"
 	"github.com/jphastings/game-status/internal/keytrace"
 )
 
@@ -82,7 +82,7 @@ func parseSweepAtURI(atURI string) (did, collection, rkey string, ok bool) {
 // RunSweep re-verifies every steam-enabled user's claim once a day — pure
 // reconciliation for whatever the Jetstream listener missed during a
 // disconnect (spec: "daily sweep"), not the primary revocation mechanism.
-func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, deleter jetstream.StatusDeleter) error {
+func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, deleter appdb.StatusDeleter) error {
 	dids, err := appdb.ListSteamEnabledDIDs(ctx, conn)
 	if err != nil {
 		return err
@@ -102,7 +102,7 @@ func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier
 			continue // uncertain outcome — try again on tomorrow's sweep
 		}
 		if deleted || c.Status != "verified" {
-			if err := invalidateSweptClaim(ctx, conn, deleter, did); err != nil {
+			if err := appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource); err != nil {
 				return err
 			}
 			continue
@@ -113,17 +113,22 @@ func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier
 			continue
 		}
 		if !ok {
-			if err := invalidateSweptClaim(ctx, conn, deleter, did); err != nil {
+			if err := appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource); err != nil {
 				return err
 			}
+			continue
+		}
+
+		// The event this sweep exists to catch may have been a missed *update*
+		// — a re-verification against a different SteamID at the same record.
+		// Confirming the signature isn't enough; without this we'd keep polling
+		// the old subject and publish someone else's play state to this user.
+		if err := appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{
+			DID: did, Subject: c.Identity.Subject, DisplayName: c.Identity.DisplayName,
+			ClaimURI: c.ClaimURI, RecordURI: claim.RecordURI, LastVerifiedAt: time.Now(),
+		}); err != nil {
+			return err
 		}
 	}
 	return nil
-}
-
-func invalidateSweptClaim(ctx context.Context, conn *sql.DB, deleter jetstream.StatusDeleter, did string) error {
-	if err := appdb.InvalidateSteamClaim(ctx, conn, did); err != nil {
-		return err
-	}
-	return deleter.DeleteStatus(ctx, did)
 }

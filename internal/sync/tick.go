@@ -74,7 +74,7 @@ func tickOne(ctx context.Context, conn *sql.DB, resolver GameResolver, writer Re
 	playing := summary.GameID != ""
 
 	var prev *SessionStart
-	row, err := appdb.GetSessionStart(ctx, conn, did, "steam")
+	row, err := appdb.GetSessionStart(ctx, conn, did, appdb.SteamSource)
 	if err != nil {
 		return err
 	}
@@ -89,10 +89,10 @@ func tickOne(ctx context.Context, conn *sql.DB, resolver GameResolver, writer Re
 		if err := writer.DeleteStatus(ctx, did); err != nil {
 			return err
 		}
-		return appdb.ClearSessionStart(ctx, conn, did, "steam")
+		return appdb.ClearSessionStart(ctx, conn, did, appdb.SteamSource)
 
 	case ActionWrite:
-		if err := appdb.SetSessionStart(ctx, conn, did, "steam", decision.GameKey, decision.CreatedAt); err != nil {
+		if err := appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, decision.GameKey, decision.CreatedAt); err != nil {
 			return err
 		}
 		game, err := resolver.GetGameBySteamID(ctx, decision.GameKey)

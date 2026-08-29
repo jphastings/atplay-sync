@@ -32,21 +32,19 @@ type Event struct {
 type Store interface {
 	GetSteamClaim(ctx context.Context, did string) (*appdb.SteamClaim, error)
 	UpsertSteamClaim(ctx context.Context, c appdb.SteamClaim) error
-	InvalidateSteamClaim(ctx context.Context, did string) error
+	// InvalidateClaim is the whole undo — claim row, session bookkeeping and
+	// the live status record on the user's PDS. See db.InvalidateClaim.
+	InvalidateClaim(ctx context.Context, did string) error
 }
 
-type StatusDeleter interface {
-	DeleteStatus(ctx context.Context, did string) error
-}
-
-func HandleEvent(ctx context.Context, store Store, deleter StatusDeleter, verifier *keytrace.Verifier, ev Event) error {
+func HandleEvent(ctx context.Context, store Store, verifier *keytrace.Verifier, ev Event) error {
 	if ev.Collection != keytrace.ClaimCollection {
 		return nil
 	}
 	atURI := "at://" + ev.DID + "/" + ev.Collection + "/" + ev.Rkey
 
 	if ev.Operation == OpDelete {
-		return invalidateIfTracked(ctx, store, deleter, ev.DID, atURI)
+		return invalidateIfTracked(ctx, store, ev.DID, atURI)
 	}
 
 	var claim keytrace.Claim
@@ -73,10 +71,10 @@ func HandleEvent(ctx context.Context, store Store, deleter StatusDeleter, verifi
 
 	// failed/retracted — only invalidate if this is the specific record we're
 	// tracking, so an unrelated old claim being updated can't knock out a good one.
-	return invalidateIfTracked(ctx, store, deleter, ev.DID, atURI)
+	return invalidateIfTracked(ctx, store, ev.DID, atURI)
 }
 
-func invalidateIfTracked(ctx context.Context, store Store, deleter StatusDeleter, did, atURI string) error {
+func invalidateIfTracked(ctx context.Context, store Store, did, atURI string) error {
 	current, err := store.GetSteamClaim(ctx, did)
 	if err != nil {
 		return err
@@ -84,8 +82,5 @@ func invalidateIfTracked(ctx context.Context, store Store, deleter StatusDeleter
 	if current == nil || current.RecordURI != atURI {
 		return nil
 	}
-	if err := store.InvalidateSteamClaim(ctx, did); err != nil {
-		return err
-	}
-	return deleter.DeleteStatus(ctx, did)
+	return store.InvalidateClaim(ctx, did)
 }

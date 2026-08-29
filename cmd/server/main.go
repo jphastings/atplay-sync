@@ -87,14 +87,15 @@ func main() {
 		TrustedDIDs: trustedDIDs,
 	}
 
-	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier}
+	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
+
+	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Deleter: writer}
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
 	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
 	meHandler := &api.MeHandler{Conn: conn, App: oauthApp}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
 
-	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
 	cartridgeClient := cartridge.New(cfg.CartridgeHost, cfg.CartridgeClientKey, conn)
 	steamClient := steam.New(cfg.SteamAPIKey)
 
@@ -120,7 +121,7 @@ func main() {
 	}()
 
 	jetHandler := func(ctx context.Context, ev jetstream.Event) error {
-		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn}, writer, verifier, ev)
+		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn, Deleter: writer}, verifier, ev)
 	}
 	jetManager := jetstream.NewManager("jetstream2.us-east.bsky.network", jetHandler)
 
