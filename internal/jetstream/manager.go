@@ -1,0 +1,49 @@
+// internal/jetstream/manager.go
+package jetstream
+
+import (
+	"context"
+	"sync"
+)
+
+type Manager struct {
+	mu      sync.Mutex
+	host    string
+	handler EventHandler
+	current *Listener
+	connect func(ctx context.Context, host string, collections, dids []string, handler EventHandler) (*Listener, error)
+}
+
+func NewManager(host string, handler EventHandler) *Manager {
+	return &Manager{host: host, handler: handler, connect: connect}
+}
+
+// Restart opens a new connection with the given DIDs BEFORE closing the old
+// one. A gap here means a claim revocation could go unnoticed until the next
+// daily sweep (spec: "make-before-break restart"). Duplicate events during
+// the brief overlap are harmless — HandleEvent's upsert/invalidate are idempotent.
+func (m *Manager) Restart(ctx context.Context, dids []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	next, err := m.connect(ctx, m.host, []string{"dev.keytrace.claim"}, dids, m.handler)
+	if err != nil {
+		return err
+	}
+
+	old := m.current
+	m.current = next
+	if old != nil {
+		old.Close()
+	}
+	return nil
+}
+
+func (m *Manager) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.current != nil {
+		m.current.Close()
+		m.current = nil
+	}
+}

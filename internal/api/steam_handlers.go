@@ -13,13 +13,15 @@ import (
 
 	"github.com/jphastings/game-status/internal/claims"
 	"github.com/jphastings/game-status/internal/db"
+	"github.com/jphastings/game-status/internal/jetstream"
 	"github.com/jphastings/game-status/internal/keytrace"
 )
 
 type SteamHandlers struct {
-	App      *oauth.ClientApp
-	Conn     *sql.DB
-	Verifier *keytrace.Verifier
+	App       *oauth.ClientApp
+	Conn      *sql.DB
+	Verifier  *keytrace.Verifier
+	Jetstream *jetstream.Manager
 }
 
 func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +70,13 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	if h.Jetstream != nil {
+		if dids, err := db.ListSteamEnabledDIDs(r.Context(), h.Conn); err == nil {
+			go func() { _ = h.Jetstream.Restart(context.Background(), dids) }() // don't block the HTTP response on a reconnect
+		}
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 

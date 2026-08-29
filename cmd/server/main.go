@@ -19,6 +19,7 @@ import (
 	"github.com/jphastings/game-status/internal/cartridge"
 	"github.com/jphastings/game-status/internal/config"
 	"github.com/jphastings/game-status/internal/db"
+	"github.com/jphastings/game-status/internal/jetstream"
 	"github.com/jphastings/game-status/internal/keytrace"
 	"github.com/jphastings/game-status/internal/steam"
 	"github.com/jphastings/game-status/internal/sync"
@@ -105,6 +106,20 @@ func main() {
 			}
 		}
 	}()
+
+	jetHandler := func(ctx context.Context, ev jetstream.Event) error {
+		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn}, writer, verifier, ev)
+	}
+	jetManager := jetstream.NewManager("jetstream2.us-east.bsky.network", jetHandler)
+
+	initialDIDs, err := db.ListSteamEnabledDIDs(context.Background(), conn)
+	if err != nil {
+		log.Fatalf("initial jetstream dids: %v", err)
+	}
+	if err := jetManager.Restart(context.Background(), initialDIDs); err != nil {
+		log.Fatalf("start jetstream: %v", err)
+	}
+	steamHandlers.Jetstream = jetManager
 
 	distFS, err := fs.Sub(frontendFS, "web/dist")
 	if err != nil {
