@@ -17,6 +17,7 @@ import (
 	"github.com/jphastings/game-status/internal/api"
 	"github.com/jphastings/game-status/internal/authstore"
 	"github.com/jphastings/game-status/internal/cartridge"
+	"github.com/jphastings/game-status/internal/claims"
 	"github.com/jphastings/game-status/internal/config"
 	"github.com/jphastings/game-status/internal/db"
 	"github.com/jphastings/game-status/internal/jetstream"
@@ -103,6 +104,17 @@ func main() {
 		for range ticker.C {
 			if err := sync.RunTick(context.Background(), conn, steamClient, cartridgeClient, writer, time.Now()); err != nil {
 				slog.Error("sync tick", "err", err)
+			}
+		}
+	}()
+
+	recordFetcher := claims.IndigoRecordFetcher{Dir: dir}
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := claims.RunSweep(context.Background(), conn, recordFetcher, verifier, writer); err != nil {
+				slog.Error("daily claim sweep", "err", err)
 			}
 		}
 	}()
