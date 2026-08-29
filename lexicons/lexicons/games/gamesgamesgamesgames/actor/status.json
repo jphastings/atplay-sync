@@ -1,0 +1,145 @@
+{
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1,
+  "id": "lexicons.games.gamesgamesgamesgames.actor.status",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A live \"now playing a game\" status, one per account.\nConsider this record abandoned if staleAt >> now.",
+      "key": "literal:self",
+      "record": {
+        "type": "object",
+        "required": [
+          "game",
+          "createdAt",
+          "staleAt"
+        ],
+        "properties": {
+          "game": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "The game being played (link to a games.gamesgamesgamesgames.game record)"
+          },
+          "platform": {
+            "type": "string",
+            "knownValues": [
+              "steam",
+              "web",
+              "gog",
+              "epic",
+              "itch",
+              "playstation",
+              "xbox",
+              "nintendo",
+              "ios",
+              "android"
+            ],
+            "description": "The storefront/platform being used"
+          },
+          "state": {
+            "type": "string",
+            "maxGraphemes": 128,
+            "maxLength": 1280,
+            "description": "The kind of session this is (eg. \"Daily Challenge\", \"4-player game\")"
+          },
+          "details": {
+            "type": "string",
+            "maxGraphemes": 128,
+            "maxLength": 1280,
+            "description": "The task being handled right now in the game\neg. \"Level 5-2\", \"Ranked - Diamond II\", \"Turn 14 of 20\""
+          },
+          "playing": {
+            "type": "object",
+            "required": [],
+            "properties": {
+              "party": {
+                "type": "object",
+                "required": [
+                  "current"
+                ],
+                "properties": {
+                  "current": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Count of players currently in the party"
+                  },
+                  "dids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "did"
+                    },
+                    "minLength": 1,
+                    "description": "Who they are, including yourself, may be less than current count\neg. if some players don't have atproto accounts."
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Capacity, if there's a hard limit"
+                  }
+                },
+                "description": "Who's playing in this session (only for 'playing' activity)"
+              }
+            },
+            "description": "Details only relevant if you're playing.\nIt's presence implies you're playing, not watching."
+          },
+          "embed": {
+            "type": "ref",
+            "ref": "app.bsky.embed.external",
+            "description": "A card representing the game/session"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this session began"
+          },
+          "staleAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When this record should be considered abandoned.\nActive sessions should update this regularly (eg. every 5 mins)\nto a few minutes in the future."
+          }
+        }
+      }
+    },
+    "steam": {
+      "type": "token",
+      "description": ""
+    },
+    "web": {
+      "type": "token",
+      "description": ""
+    },
+    "gog": {
+      "type": "token",
+      "description": ""
+    },
+    "epic": {
+      "type": "token",
+      "description": ""
+    },
+    "itch": {
+      "type": "token",
+      "description": ""
+    },
+    "playstation": {
+      "type": "token",
+      "description": ""
+    },
+    "xbox": {
+      "type": "token",
+      "description": ""
+    },
+    "nintendo": {
+      "type": "token",
+      "description": ""
+    },
+    "ios": {
+      "type": "token",
+      "description": ""
+    },
+    "android": {
+      "type": "token",
+      "description": ""
+    }
+  }
+}
