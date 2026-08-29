@@ -17,6 +17,8 @@ type Config struct {
 
 	CartridgeHost      string
 	CartridgeClientKey string
+
+	SteamAPIKey string
 }
 
 func Load() (*Config, error) {
@@ -54,6 +56,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.CartridgeClientKey = cartridgeKey
+
+	steamKey, err := requireEnv("STEAM_API_KEY")
+	if err != nil {
+		return nil, err
+	}
+	cfg.SteamAPIKey = steamKey
 
 	return cfg, nil
 }
