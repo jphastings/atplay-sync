@@ -106,3 +106,28 @@ func TestSQLiteStore_AuthRequestRoundTripAndDelete(t *testing.T) {
 		t.Fatal("expected error after delete, got nil")
 	}
 }
+
+func TestSQLiteStore_DeleteStaleAuthRequestsKeepsLiveFlows(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	store := &SQLiteStore{Conn: conn}
+
+	if err := store.SaveAuthRequestInfo(ctx, oauth.AuthRequestData{State: "live"}); err != nil {
+		t.Fatalf("SaveAuthRequestInfo: %v", err)
+	}
+	_, err := conn.ExecContext(ctx, `INSERT INTO oauth_auth_requests (state, data, created_at) VALUES ('abandoned', '{}', datetime('now', '-1 hour'))`)
+	if err != nil {
+		t.Fatalf("insert abandoned request: %v", err)
+	}
+
+	if err := store.DeleteStaleAuthRequests(ctx); err != nil {
+		t.Fatalf("DeleteStaleAuthRequests: %v", err)
+	}
+
+	if _, err := store.GetAuthRequestInfo(ctx, "abandoned"); err == nil {
+		t.Fatal("expected the abandoned auth request to have been collected")
+	}
+	if _, err := store.GetAuthRequestInfo(ctx, "live"); err != nil {
+		t.Fatalf("a just-started flow was collected: %v", err)
+	}
+}

@@ -96,3 +96,12 @@ func (s *SQLiteStore) DeleteAuthRequestInfo(ctx context.Context, state string) e
 	_, err := s.Conn.ExecContext(ctx, `DELETE FROM oauth_auth_requests WHERE state = ?`, state)
 	return err
 }
+
+// DeleteStaleAuthRequests drops rows from flows that were never completed —
+// indigo only removes one when the callback succeeds. GET /login is the app's
+// only unauthenticated write path, so without this every abandoned or probed
+// sign-in leaks a row forever. Real flows finish in seconds.
+func (s *SQLiteStore) DeleteStaleAuthRequests(ctx context.Context) error {
+	_, err := s.Conn.ExecContext(ctx, `DELETE FROM oauth_auth_requests WHERE created_at < datetime('now', '-15 minutes')`)
+	return err
+}

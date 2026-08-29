@@ -29,9 +29,14 @@ async function render() {
 }
 
 function renderSignedIn(me: Me) {
+  // Three states, not two: sync stays switched on when a claim is revoked
+  // (intent and validity are deliberately separate), so "not connected" would
+  // be a lie next to a checked box.
   const claimStatus = me.steamSubject
     ? `Verified as ${me.steamDisplayName ?? me.steamSubject}`
-    : 'Not connected — verify at keytrace.dev, then recheck below'
+    : me.steamEnabled
+      ? 'Claim invalid — re-verify at keytrace.dev, then click Recheck claim'
+      : 'Not connected — verify at keytrace.dev, then recheck below'
   const toggleDisabled = me.steamSubject ? '' : 'disabled'
   const liveStatus = me.live ? `Currently: ${me.live.game}` : 'Not currently playing anything tracked'
 

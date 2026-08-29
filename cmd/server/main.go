@@ -68,7 +68,8 @@ func main() {
 	if err := oauthConfig.SetClientSecret(priv, cfg.OAuthKeyID); err != nil {
 		log.Fatalf("oauth client secret: %v", err)
 	}
-	oauthApp := oauth.NewClientApp(&oauthConfig, &authstore.SQLiteStore{Conn: conn})
+	store := &authstore.SQLiteStore{Conn: conn}
+	oauthApp := oauth.NewClientApp(&oauthConfig, store)
 
 	oauthHandlers := &api.OAuthHandlers{App: oauthApp, Conn: conn, Cookies: webauth.SignedCookies{Secret: cfg.SessionSecret}, BaseURL: cfg.BaseURL}
 
@@ -116,6 +117,9 @@ func main() {
 		for range ticker.C {
 			if err := claims.RunSweep(context.Background(), conn, recordFetcher, verifier, writer); err != nil {
 				slog.Error("daily claim sweep", "err", err)
+			}
+			if err := store.DeleteStaleAuthRequests(context.Background()); err != nil {
+				slog.Error("stale auth request cleanup", "err", err)
 			}
 		}
 	}()
