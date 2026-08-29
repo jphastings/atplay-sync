@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"io/fs"
 	"log"
 	"log/slog"
 	"net/http"
@@ -86,7 +87,11 @@ func main() {
 	meHandler := &api.MeHandler{Conn: conn}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
 
-	mux.Handle("GET /", http.FileServerFS(frontendFS))
+	distFS, err := fs.Sub(frontendFS, "web/dist")
+	if err != nil {
+		log.Fatalf("frontend embed: %v", err)
+	}
+	mux.Handle("GET /", http.FileServerFS(distFS))
 
 	slog.Info("listening", "addr", cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {
