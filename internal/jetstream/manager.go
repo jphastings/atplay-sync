@@ -4,7 +4,14 @@ package jetstream
 import (
 	"context"
 	"sync"
+
+	"github.com/jphastings/game-status/internal/keytrace"
 )
+
+// DIDLister reports the DIDs that should currently be watched. Manager calls it
+// while holding its own lock so a read can't be overtaken by a concurrent
+// restart applying a staler list.
+type DIDLister func(ctx context.Context) ([]string, error)
 
 type Manager struct {
 	mu      sync.Mutex
@@ -22,11 +29,16 @@ func NewManager(host string, handler EventHandler) *Manager {
 // one. A gap here means a claim revocation could go unnoticed until the next
 // daily sweep (spec: "make-before-break restart"). Duplicate events during
 // the brief overlap are harmless — HandleEvent's upsert/invalidate are idempotent.
-func (m *Manager) Restart(ctx context.Context, dids []string) error {
+func (m *Manager) Restart(ctx context.Context, listDIDs DIDLister) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	next, err := m.connect(ctx, m.host, []string{"dev.keytrace.claim"}, dids, m.handler)
+	dids, err := listDIDs(ctx)
+	if err != nil {
+		return err
+	}
+
+	next, err := m.connect(ctx, m.host, []string{keytrace.ClaimCollection}, dids, m.handler)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
@@ -72,9 +73,16 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.Jetstream != nil {
-		if dids, err := db.ListSteamEnabledDIDs(r.Context(), h.Conn); err == nil {
-			go func() { _ = h.Jetstream.Restart(context.Background(), dids) }() // don't block the HTTP response on a reconnect
-		}
+		// Don't block the HTTP response on a reconnect; Restart reads the DID
+		// list itself so two concurrent toggles can't apply a stale one.
+		go func() {
+			err := h.Jetstream.Restart(context.Background(), func(ctx context.Context) ([]string, error) {
+				return db.ListSteamEnabledDIDs(ctx, h.Conn)
+			})
+			if err != nil {
+				slog.Error("jetstream restart after steam toggle", "did", did, "enabled", body.Enabled, "err", err)
+			}
+		}()
 	}
 
 	w.WriteHeader(http.StatusNoContent)

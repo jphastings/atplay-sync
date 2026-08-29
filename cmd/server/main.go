@@ -112,11 +112,10 @@ func main() {
 	}
 	jetManager := jetstream.NewManager("jetstream2.us-east.bsky.network", jetHandler)
 
-	initialDIDs, err := db.ListSteamEnabledDIDs(context.Background(), conn)
-	if err != nil {
-		log.Fatalf("initial jetstream dids: %v", err)
+	listWatchedDIDs := func(ctx context.Context) ([]string, error) {
+		return db.ListSteamEnabledDIDs(ctx, conn)
 	}
-	if err := jetManager.Restart(context.Background(), initialDIDs); err != nil {
+	if err := jetManager.Restart(context.Background(), listWatchedDIDs); err != nil {
 		log.Fatalf("start jetstream: %v", err)
 	}
 	steamHandlers.Jetstream = jetManager
