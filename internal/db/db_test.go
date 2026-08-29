@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -18,6 +19,35 @@ func TestOpen_AppliesSchema(t *testing.T) {
 		var name string
 		if err := conn.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name); err != nil {
 			t.Errorf("table %s not found: %v", table, err)
+		}
+	}
+}
+
+func TestOpen_ConcurrentWritersDontHitSQLiteBusy(t *testing.T) {
+	conn, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	var mode string
+	if err := conn.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatalf("PRAGMA journal_mode: %v", err)
+	}
+	if mode != "wal" {
+		t.Fatalf("journal_mode = %q, want wal", mode)
+	}
+
+	errs := make(chan error, 8)
+	for i := range 8 {
+		go func() {
+			_, err := conn.Exec(`INSERT INTO users (did, created_at) VALUES (?, datetime('now'))`, fmt.Sprintf("did:plc:%d", i))
+			errs <- err
+		}()
+	}
+	for range 8 {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent insert: %v", err)
 		}
 	}
 }
