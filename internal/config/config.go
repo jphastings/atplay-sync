@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 )
@@ -8,13 +9,43 @@ import (
 type Config struct {
 	ListenAddr string
 	DBPath     string
+
+	BaseURL                  string
+	SessionSecret            []byte
+	OAuthPrivateKeyMultibase string
+	OAuthKeyID               string
 }
 
 func Load() (*Config, error) {
-	return &Config{
+	cfg := &Config{
 		ListenAddr: envOr("LISTEN_ADDR", ":8080"),
 		DBPath:     envOr("DB_PATH", "game-status.db"),
-	}, nil
+	}
+
+	baseURL, err := requireEnv("BASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	cfg.BaseURL = baseURL
+
+	secretHex, err := requireEnv("SESSION_SECRET")
+	if err != nil {
+		return nil, err
+	}
+	secret, err := hex.DecodeString(secretHex)
+	if err != nil {
+		return nil, fmt.Errorf("SESSION_SECRET must be hex-encoded: %w", err)
+	}
+	cfg.SessionSecret = secret
+
+	oauthKey, err := requireEnv("OAUTH_PRIVATE_KEY")
+	if err != nil {
+		return nil, err
+	}
+	cfg.OAuthPrivateKeyMultibase = oauthKey
+	cfg.OAuthKeyID = envOr("OAUTH_KEY_ID", "1")
+
+	return cfg, nil
 }
 
 func envOr(key, fallback string) string {
