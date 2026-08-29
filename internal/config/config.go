@@ -14,6 +14,9 @@ type Config struct {
 	SessionSecret            []byte
 	OAuthPrivateKeyMultibase string
 	OAuthKeyID               string
+
+	CartridgeHost      string
+	CartridgeClientKey string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +47,13 @@ func Load() (*Config, error) {
 	}
 	cfg.OAuthPrivateKeyMultibase = oauthKey
 	cfg.OAuthKeyID = envOr("OAUTH_KEY_ID", "1")
+
+	cfg.CartridgeHost = envOr("CARTRIDGE_HOST", "https://gamesgamesgamesgames.games")
+	cartridgeKey, err := requireEnv("CARTRIDGE_CLIENT_KEY")
+	if err != nil {
+		return nil, err
+	}
+	cfg.CartridgeClientKey = cartridgeKey
 
 	return cfg, nil
 }
