@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
@@ -83,7 +84,8 @@ func (h *MeHandler) getLiveStatus(ctx context.Context, did string) (*liveStatus,
 	}
 	sess, err := h.App.ResumeSession(ctx, parsedDID, user.ActiveSessionID)
 	if err != nil {
-		return nil, err
+		slog.Warn("resume session failed, omitting live status", "did", did, "err", err)
+		return nil, nil
 	}
 	resp, err := agnostic.RepoGetRecord(ctx, sess.APIClient(), "", sync.StatusCollection, did, "self")
 	if err != nil {
