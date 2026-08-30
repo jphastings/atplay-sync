@@ -1885,7 +1885,7 @@ git commit -m "discord: add Gateway connection, member events, DM sending"
 
 **Interfaces:**
 - Consumes: `discord.GameIndex` (Task 4), `sync.UpdateSession`/`Reconciler` (Task 3), `db.GetClaim`/`ListEnabledDIDs` (Task 2).
-- Produces: `discord.PresenceHandler{Conn, Games, Reconciler}` with a method matching discordgo's `func(*discordgo.Session, *discordgo.PresenceUpdate)` handler shape, plus `HandleGuildMemberRemove` for the "left the server" invalidation path (wired to `Gateway.OnLeave` in Task 9).
+- Produces: `discord.PresenceHandler{Conn, GuildID, Games, Reconciler}` with a method matching discordgo's `func(*discordgo.Session, *discordgo.PresenceUpdate)` handler shape, plus `HandleGuildMemberRemove` for the "left the server" invalidation path (wired to `Gateway.OnLeave` in Task 9). Per the Global Constraints, `HandlePresenceUpdate` filters by `GuildID` first, same as every handler in `Gateway` (Task 7).
 
 This is the Discord equivalent of `sync.RunTick`/`tickOne` — except event-driven rather than polled, so there's no batching or budget: one presence event is one user's update.
 
@@ -1973,7 +1973,7 @@ func TestPresenceHandler_PlayingResolvableGame_UpdatesSession(t *testing.T) {
 	reconciler := &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{games: map[string]*appdb.CachedGame{
 		"570": {URI: "at://cartridge/dota2", Name: "Dota 2"},
 	}}, Writer: &fakeWriter{}}
-	h := &PresenceHandler{Conn: conn, Games: games, Reconciler: reconciler}
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: games, Reconciler: reconciler}
 
 	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
 		User: &discordgo.User{ID: "690973862245957683"},
@@ -1992,7 +1992,7 @@ func TestPresenceHandler_NotPlaying_ClearsSession(t *testing.T) {
 	seedDiscordUser(t, conn, "did:plc:a", "690973862245957683")
 	appdb.SetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource, "570", time.Now())
 
-	h := &PresenceHandler{Conn: conn, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
 	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
 		User: &discordgo.User{ID: "690973862245957683"}, Activities: nil,
 	}, GuildID: guildID})
@@ -2005,7 +2005,7 @@ func TestPresenceHandler_NotPlaying_ClearsSession(t *testing.T) {
 
 func TestPresenceHandler_UnclaimedUser_Ignored(t *testing.T) {
 	conn := openTestDB(t)
-	h := &PresenceHandler{Conn: conn, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
 
 	// No user with this Discord ID has an enabled+claimed sync_prefs row —
 	// must not error, must not create any state.
@@ -2020,7 +2020,7 @@ func TestHandleGuildMemberRemove_InvalidatesDiscordClaim(t *testing.T) {
 	conn := openTestDB(t)
 	seedDiscordUser(t, conn, "did:plc:a", "690973862245957683")
 
-	h := &PresenceHandler{Conn: conn, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
 	if err := h.HandleGuildMemberRemove(ctx, "690973862245957683"); err != nil {
 		t.Fatalf("HandleGuildMemberRemove: %v", err)
 	}
@@ -2062,6 +2062,7 @@ import (
 
 type PresenceHandler struct {
 	Conn       *sql.DB
+	GuildID    string
 	Games      *GameIndex
 	Reconciler *appsync.Reconciler
 }
@@ -2071,8 +2072,8 @@ type PresenceHandler struct {
 // row and reconcile. Unlike Steam's tick, this is push-driven — one event
 // is one user, no batching or budget.
 func (h *PresenceHandler) HandlePresenceUpdate(s *discordgo.Session, e *discordgo.PresenceUpdate) {
-	if e.GuildID != "" && h.Games == nil {
-		return // defensive: never called with a nil index in production wiring
+	if e.GuildID != h.GuildID {
+		return // Global Constraints: every Gateway event handler filters by the tracking guild first
 	}
 	ctx := context.Background()
 
@@ -2484,7 +2485,7 @@ go func() {
 
 reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer}
 
-presenceHandler := &discord.PresenceHandler{Conn: conn, Games: gameIndex, Reconciler: reconciler}
+presenceHandler := &discord.PresenceHandler{Conn: conn, GuildID: cfg.DiscordGuildID, Games: gameIndex, Reconciler: reconciler}
 discordGateway.Session.AddHandler(presenceHandler.HandlePresenceUpdate)
 discordGateway.OnJoin = func(discordID string) {
 	discordGateway.SendDM(discordID, "Link your atmosphere account: https://keytrace.dev/add/discord, then check your sync settings at "+cfg.BaseURL)
