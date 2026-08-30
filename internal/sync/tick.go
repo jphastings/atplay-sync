@@ -38,7 +38,7 @@ type CallBudget interface {
 }
 
 func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver GameResolver, writer RecordWriter, budget CallBudget, now time.Time) error {
-	dids, err := appdb.ListSteamEnabledDIDs(ctx, conn)
+	dids, err := appdb.ListEnabledDIDs(ctx, conn, appdb.SteamSource)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 	steamIDs := make([]string, 0, len(dids))
 	steamIDToDID := make(map[string]string, len(dids))
 	for _, did := range dids {
-		claim, err := appdb.GetSteamClaim(ctx, conn, did)
+		claim, err := appdb.GetClaim(ctx, conn, did, appdb.SteamSource)
 		if err != nil {
 			return err
 		}

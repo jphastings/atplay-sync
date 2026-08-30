@@ -107,7 +107,7 @@ func main() {
 		for {
 			time.Sleep(sync.NextPollInterval(callsPerPoll, steamBudget.Remaining(), time.Now()))
 
-			dids, err := db.ListSteamEnabledDIDs(context.Background(), conn)
+			dids, err := db.ListEnabledDIDs(context.Background(), conn, db.SteamSource)
 			if err != nil {
 				slog.Error("sync tick", "err", err)
 				continue

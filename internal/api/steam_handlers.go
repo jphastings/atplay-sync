@@ -57,7 +57,7 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.Enabled {
-		claim, err := db.GetSteamClaim(r.Context(), h.Conn, did)
+		claim, err := db.GetClaim(r.Context(), h.Conn, did, db.SteamSource)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -81,7 +81,7 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := db.SetSteamEnabled(r.Context(), h.Conn, did, body.Enabled); err != nil {
+	if err := db.SetEnabled(r.Context(), h.Conn, did, db.SteamSource, body.Enabled); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

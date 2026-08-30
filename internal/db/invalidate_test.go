@@ -22,15 +22,15 @@ func TestInvalidateClaim_TurnsOffSync(t *testing.T) {
 	ctx := context.Background()
 
 	UpsertUser(ctx, conn, "did:plc:a")
-	SetSteamEnabled(ctx, conn, "did:plc:a", true)
+	SetEnabled(ctx, conn, "did:plc:a", SteamSource, true)
 
 	deleter := &fakeDeleter{}
 	if err := InvalidateClaim(ctx, conn, deleter, "did:plc:a", SteamSource); err != nil {
 		t.Fatalf("InvalidateClaim: %v", err)
 	}
 
-	if enabled, err := IsSteamEnabled(ctx, conn, "did:plc:a"); err != nil || enabled {
-		t.Fatalf("IsSteamEnabled = %v, %v, want false, nil — a lost claim must turn sync off, not leave it silently waiting to resume", enabled, err)
+	if enabled, err := IsEnabled(ctx, conn, "did:plc:a", SteamSource); err != nil || enabled {
+		t.Fatalf("IsEnabled = %v, %v, want false, nil — a lost claim must turn sync off, not leave it silently waiting to resume", enabled, err)
 	}
 	if len(deleter.calls) != 1 || deleter.calls[0] != "did:plc:a" {
 		t.Fatalf("DeleteStatus calls = %v, want one call for did:plc:a", deleter.calls)

@@ -67,12 +67,12 @@ func seedEligibleUser(t *testing.T, conn *sql.DB, did, steamID string) {
 	if err := appdb.UpsertUser(ctx, conn, did); err != nil {
 		t.Fatalf("UpsertUser: %v", err)
 	}
-	if err := appdb.SetSteamEnabled(ctx, conn, did, true); err != nil {
-		t.Fatalf("SetSteamEnabled: %v", err)
+	if err := appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
 	}
-	err := appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: did, Subject: steamID, ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	err := appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: did, Type: appdb.SteamSource, Subject: steamID, ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
 	if err != nil {
-		t.Fatalf("UpsertSteamClaim: %v", err)
+		t.Fatalf("UpsertClaim: %v", err)
 	}
 }
 

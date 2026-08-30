@@ -27,10 +27,10 @@ type StatusDeleter interface {
 // explicit choice (consent is the point), not an automatic side effect of
 // re-linking.
 func InvalidateClaim(ctx context.Context, conn *sql.DB, deleter StatusDeleter, did, source string) error {
-	if err := InvalidateSteamClaim(ctx, conn, did); err != nil {
+	if err := DeleteClaim(ctx, conn, did, source); err != nil {
 		return err
 	}
-	if err := SetSteamEnabled(ctx, conn, did, false); err != nil {
+	if err := SetEnabled(ctx, conn, did, source, false); err != nil {
 		return err
 	}
 	if err := ClearSessionStart(ctx, conn, did, source); err != nil {

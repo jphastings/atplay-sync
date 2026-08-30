@@ -16,8 +16,8 @@ import (
 )
 
 // Discover re-scans the user's own dev.keytrace.claim collection for a
-// verified, cryptographically-checked Steam claim and upserts/clears
-// steam_claims accordingly. See spec's "Claim indexing".
+// verified, cryptographically-checked Steam claim and upserts/clears the
+// claims table accordingly. See spec's "Claim indexing".
 func Discover(ctx context.Context, client lexutil.LexClient, verifier *keytrace.Verifier, conn *sql.DB, deleter appdb.StatusDeleter, did string) error {
 	var cursor string
 	for {
@@ -41,8 +41,8 @@ func Discover(ctx context.Context, client lexutil.LexClient, verifier *keytrace.
 			if !ok {
 				continue
 			}
-			return appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{
-				DID: did, Subject: claim.Identity.Subject, DisplayName: claim.Identity.DisplayName,
+			return appdb.UpsertClaim(ctx, conn, appdb.Claim{
+				DID: did, Type: appdb.SteamSource, Subject: claim.Identity.Subject, DisplayName: claim.Identity.DisplayName,
 				ClaimURI: claim.ClaimURI, RecordURI: rec.Uri, LastVerifiedAt: time.Now(),
 			})
 		}

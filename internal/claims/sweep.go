@@ -83,13 +83,13 @@ func parseSweepAtURI(atURI string) (did, collection, rkey string, ok bool) {
 // reconciliation for whatever the Jetstream listener missed during a
 // disconnect (spec: "daily sweep"), not the primary revocation mechanism.
 func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, deleter appdb.StatusDeleter) error {
-	dids, err := appdb.ListSteamEnabledDIDs(ctx, conn)
+	dids, err := appdb.ListEnabledDIDs(ctx, conn, appdb.SteamSource)
 	if err != nil {
 		return err
 	}
 
 	for _, did := range dids {
-		claim, err := appdb.GetSteamClaim(ctx, conn, did)
+		claim, err := appdb.GetClaim(ctx, conn, did, appdb.SteamSource)
 		if err != nil {
 			return err
 		}
@@ -123,8 +123,8 @@ func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier
 		// — a re-verification against a different SteamID at the same record.
 		// Confirming the signature isn't enough; without this we'd keep polling
 		// the old subject and publish someone else's play state to this user.
-		if err := appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{
-			DID: did, Subject: c.Identity.Subject, DisplayName: c.Identity.DisplayName,
+		if err := appdb.UpsertClaim(ctx, conn, appdb.Claim{
+			DID: did, Type: appdb.SteamSource, Subject: c.Identity.Subject, DisplayName: c.Identity.DisplayName,
 			ClaimURI: c.ClaimURI, RecordURI: claim.RecordURI, LastVerifiedAt: time.Now(),
 		}); err != nil {
 			return err

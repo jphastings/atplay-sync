@@ -32,7 +32,7 @@ func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	resp := meResponse{DID: did}
 
-	claim, err := db.GetSteamClaim(r.Context(), h.Conn, did)
+	claim, err := db.GetClaim(r.Context(), h.Conn, did, db.SteamSource)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -42,7 +42,7 @@ func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {
 		resp.SteamDisplay = &claim.DisplayName
 	}
 
-	enabled, err := db.IsSteamEnabled(r.Context(), h.Conn, did)
+	enabled, err := db.IsEnabled(r.Context(), h.Conn, did, db.SteamSource)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

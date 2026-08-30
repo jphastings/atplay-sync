@@ -37,15 +37,15 @@ func testVerifier() *keytrace.Verifier {
 }
 
 type fakeStore struct {
-	claim       *appdb.SteamClaim
-	upserts     []appdb.SteamClaim
+	claim       *appdb.Claim
+	upserts     []appdb.Claim
 	invalidated bool
 }
 
-func (f *fakeStore) GetSteamClaim(ctx context.Context, did string) (*appdb.SteamClaim, error) {
+func (f *fakeStore) GetClaim(ctx context.Context, did, claimType string) (*appdb.Claim, error) {
 	return f.claim, nil
 }
-func (f *fakeStore) UpsertSteamClaim(ctx context.Context, c appdb.SteamClaim) error {
+func (f *fakeStore) UpsertClaim(ctx context.Context, c appdb.Claim) error {
 	f.upserts = append(f.upserts, c)
 	return nil
 }
@@ -58,7 +58,7 @@ func (f *fakeStore) InvalidateClaim(ctx context.Context, did string) error {
 }
 
 func TestHandleEvent_DeleteMatchingTrackedRecord_Invalidates(t *testing.T) {
-	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:a", RecordURI: "at://did:plc:a/dev.keytrace.claim/abc"}}
+	store := &fakeStore{claim: &appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, RecordURI: "at://did:plc:a/dev.keytrace.claim/abc"}}
 
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "abc", Operation: OpDelete}
 	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
@@ -70,7 +70,7 @@ func TestHandleEvent_DeleteMatchingTrackedRecord_Invalidates(t *testing.T) {
 }
 
 func TestHandleEvent_DeleteOfUnrelatedRecord_NoOp(t *testing.T) {
-	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:a", RecordURI: "at://did:plc:a/dev.keytrace.claim/current"}}
+	store := &fakeStore{claim: &appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, RecordURI: "at://did:plc:a/dev.keytrace.claim/current"}}
 
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "some-old-rkey", Operation: OpDelete}
 	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
@@ -112,7 +112,7 @@ func TestHandleEvent_VerifiedStatusButBadSignature_NoUpsert(t *testing.T) {
 
 func TestHandleEvent_UpdateToNonVerifiedStatus_InvalidatesTrackedRecord(t *testing.T) {
 	atURI := "at://did:plc:ephkzpinhaqcabtkugtbzrwu/dev.keytrace.claim/3mkwoifsquv2p"
-	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", RecordURI: atURI}}
+	store := &fakeStore{claim: &appdb.Claim{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Type: appdb.SteamSource, RecordURI: atURI}}
 
 	retracted := strings.Replace(realClaimJSON, `"status":"verified"`, `"status":"retracted"`, 1)
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpUpdate, Record: []byte(retracted)}

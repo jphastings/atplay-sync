@@ -52,7 +52,7 @@ func TestSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: "did:plc:a", Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
 
 	h := &SteamHandlers{Conn: conn}
 	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":true}`))
@@ -64,9 +64,9 @@ func TestSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
-	enabled, err := appdb.IsSteamEnabled(ctx, conn, "did:plc:a")
+	enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource)
 	if err != nil || !enabled {
-		t.Fatalf("IsSteamEnabled = %v, %v, want true, nil", enabled, err)
+		t.Fatalf("IsEnabled = %v, %v, want true, nil", enabled, err)
 	}
 }
 
@@ -78,8 +78,8 @@ func TestSetEnabled_DisableDeletesStatusAndClearsSession(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: "did:plc:a", Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
-	appdb.SetSteamEnabled(ctx, conn, "did:plc:a", true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
 	appdb.SetSessionStart(ctx, conn, "did:plc:a", appdb.SteamSource, "271590", time.Now())
 
 	deleter := &fakeDeleter{}
@@ -99,8 +99,8 @@ func TestSetEnabled_DisableDeletesStatusAndClearsSession(t *testing.T) {
 	if row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || row != nil {
 		t.Fatalf("GetSessionStart = %+v, %v, want nil, nil (cleared)", row, err)
 	}
-	if enabled, err := appdb.IsSteamEnabled(ctx, conn, "did:plc:a"); err != nil || enabled {
-		t.Fatalf("IsSteamEnabled = %v, %v, want false, nil", enabled, err)
+	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || enabled {
+		t.Fatalf("IsEnabled = %v, %v, want false, nil", enabled, err)
 	}
 }
 
@@ -112,8 +112,8 @@ func TestSetEnabled_DisableFailsClosedWhenDeleteFails(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: "did:plc:a", Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
-	appdb.SetSteamEnabled(ctx, conn, "did:plc:a", true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
 
 	h := &SteamHandlers{Conn: conn, Deleter: &fakeDeleter{err: errors.New("pds unreachable")}}
 	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":false}`))
@@ -128,7 +128,7 @@ func TestSetEnabled_DisableFailsClosedWhenDeleteFails(t *testing.T) {
 	// A failed delete must not leave the pref flipped off with the record
 	// still live — the toggle should read as still-enabled so the UI/user
 	// can retry rather than silently drifting out of sync with the PDS.
-	if enabled, err := appdb.IsSteamEnabled(ctx, conn, "did:plc:a"); err != nil || !enabled {
-		t.Fatalf("IsSteamEnabled = %v, %v, want true, nil (unchanged)", enabled, err)
+	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || !enabled {
+		t.Fatalf("IsEnabled = %v, %v, want true, nil (unchanged)", enabled, err)
 	}
 }

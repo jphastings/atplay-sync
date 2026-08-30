@@ -72,9 +72,9 @@ func TestDiscover_UpsertsOnRealVerifiedClaim(t *testing.T) {
 		t.Fatalf("Discover: %v", err)
 	}
 
-	got, err := appdb.GetSteamClaim(ctx, conn, realClaimDID)
+	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.SteamSource)
 	if err != nil {
-		t.Fatalf("GetSteamClaim: %v", err)
+		t.Fatalf("GetClaim: %v", err)
 	}
 	if got == nil || got.Subject != "76561197994000231" {
 		t.Fatalf("got %+v, want a steam claim for subject 76561197994000231", got)
@@ -85,7 +85,7 @@ func TestDiscover_InvalidatesWhenNoVerifiedClaimFound(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
 	appdb.UpsertUser(ctx, conn, realClaimDID)
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: realClaimDID, Subject: "old", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: realClaimDID, Type: appdb.SteamSource, Subject: "old", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
 	appdb.SetSessionStart(ctx, conn, realClaimDID, appdb.SteamSource, "271590", time.Now())
 
 	client := &fakeLexClient{records: nil} // the claim is gone
@@ -96,9 +96,9 @@ func TestDiscover_InvalidatesWhenNoVerifiedClaimFound(t *testing.T) {
 		t.Fatalf("Discover: %v", err)
 	}
 
-	got, err := appdb.GetSteamClaim(ctx, conn, realClaimDID)
+	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.SteamSource)
 	if err != nil {
-		t.Fatalf("GetSteamClaim: %v", err)
+		t.Fatalf("GetClaim: %v", err)
 	}
 	if got != nil {
 		t.Fatalf("got %+v, want nil after the claim disappears", got)

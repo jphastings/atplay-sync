@@ -30,8 +30,8 @@ type Event struct {
 }
 
 type Store interface {
-	GetSteamClaim(ctx context.Context, did string) (*appdb.SteamClaim, error)
-	UpsertSteamClaim(ctx context.Context, c appdb.SteamClaim) error
+	GetClaim(ctx context.Context, did, claimType string) (*appdb.Claim, error)
+	UpsertClaim(ctx context.Context, c appdb.Claim) error
 	// InvalidateClaim is the whole undo — claim row, session bookkeeping and
 	// the live status record on the user's PDS. See db.InvalidateClaim.
 	InvalidateClaim(ctx context.Context, did string) error
@@ -63,8 +63,8 @@ func HandleEvent(ctx context.Context, store Store, verifier *keytrace.Verifier, 
 		if !ok {
 			return nil // fails crypto verification — don't trust it, but don't touch an unrelated existing claim either
 		}
-		return store.UpsertSteamClaim(ctx, appdb.SteamClaim{
-			DID: ev.DID, Subject: claim.Identity.Subject, DisplayName: claim.Identity.DisplayName,
+		return store.UpsertClaim(ctx, appdb.Claim{
+			DID: ev.DID, Type: appdb.SteamSource, Subject: claim.Identity.Subject, DisplayName: claim.Identity.DisplayName,
 			ClaimURI: claim.ClaimURI, RecordURI: atURI, LastVerifiedAt: time.Now(),
 		})
 	}
@@ -75,7 +75,7 @@ func HandleEvent(ctx context.Context, store Store, verifier *keytrace.Verifier, 
 }
 
 func invalidateIfTracked(ctx context.Context, store Store, did, atURI string) error {
-	current, err := store.GetSteamClaim(ctx, did)
+	current, err := store.GetClaim(ctx, did, "steam")
 	if err != nil {
 		return err
 	}

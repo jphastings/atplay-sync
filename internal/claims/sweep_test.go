@@ -35,8 +35,8 @@ func TestRunSweep_InvalidatesWhenRecordDeleted(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.SetSteamEnabled(ctx, conn, "did:plc:a", true)
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: "did:plc:a", Subject: "765", ClaimURI: "x", RecordURI: "at://did:plc:a/dev.keytrace.claim/abc", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "at://did:plc:a/dev.keytrace.claim/abc", LastVerifiedAt: time.Now()})
 
 	fetcher := fakeRecordFetcher{deleted: map[string]bool{"at://did:plc:a/dev.keytrace.claim/abc": true}}
 	deleter := &fakeSweepDeleter{}
@@ -45,9 +45,9 @@ func TestRunSweep_InvalidatesWhenRecordDeleted(t *testing.T) {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
-	got, err := appdb.GetSteamClaim(ctx, conn, "did:plc:a")
+	got, err := appdb.GetClaim(ctx, conn, "did:plc:a", appdb.SteamSource)
 	if err != nil {
-		t.Fatalf("GetSteamClaim: %v", err)
+		t.Fatalf("GetClaim: %v", err)
 	}
 	if got != nil || len(deleter.deleted) != 1 {
 		t.Fatalf("got claim=%+v deleted=%v, want invalidated", got, deleter.deleted)
@@ -62,8 +62,8 @@ func TestRunSweep_ReconcilesAChangedSubject(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
 	appdb.UpsertUser(ctx, conn, realClaimDID)
-	appdb.SetSteamEnabled(ctx, conn, realClaimDID, true)
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: realClaimDID, Subject: "an-old-steamid", ClaimURI: "x", RecordURI: "real-uri", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, realClaimDID, appdb.SteamSource, true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: realClaimDID, Type: appdb.SteamSource, Subject: "an-old-steamid", ClaimURI: "x", RecordURI: "real-uri", LastVerifiedAt: time.Now()})
 
 	var realClaim keytrace.Claim
 	if err := json.Unmarshal([]byte(realClaimJSON), &realClaim); err != nil {
@@ -75,9 +75,9 @@ func TestRunSweep_ReconcilesAChangedSubject(t *testing.T) {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
-	got, err := appdb.GetSteamClaim(ctx, conn, realClaimDID)
+	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.SteamSource)
 	if err != nil {
-		t.Fatalf("GetSteamClaim: %v", err)
+		t.Fatalf("GetClaim: %v", err)
 	}
 	if got == nil || got.Subject != "76561197994000231" {
 		t.Fatalf("got %+v, want the subject from the re-fetched claim", got)
@@ -88,10 +88,10 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
 	appdb.UpsertUser(ctx, conn, realClaimDID)
-	appdb.SetSteamEnabled(ctx, conn, realClaimDID, true)
-	err := appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: realClaimDID, Subject: "76561197994000231", ClaimURI: "x", RecordURI: "real-uri", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, realClaimDID, appdb.SteamSource, true)
+	err := appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: realClaimDID, Type: appdb.SteamSource, Subject: "76561197994000231", ClaimURI: "x", RecordURI: "real-uri", LastVerifiedAt: time.Now()})
 	if err != nil {
-		t.Fatalf("UpsertSteamClaim: %v", err)
+		t.Fatalf("UpsertClaim: %v", err)
 	}
 
 	var realClaim keytrace.Claim
@@ -105,9 +105,9 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
-	got, err := appdb.GetSteamClaim(ctx, conn, realClaimDID)
+	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.SteamSource)
 	if err != nil {
-		t.Fatalf("GetSteamClaim: %v", err)
+		t.Fatalf("GetClaim: %v", err)
 	}
 	if got == nil || len(deleter.deleted) != 0 {
 		t.Fatalf("got claim=%+v deleted=%v, want the claim left alone", got, deleter.deleted)
