@@ -14,7 +14,7 @@ func TestOpen_AppliesSchema(t *testing.T) {
 	}
 	defer conn.Close()
 
-	tables := []string{"users", "oauth_sessions", "oauth_auth_requests", "steam_claims", "sync_prefs", "session_starts", "game_cache", "keytrace_key_cache"}
+	tables := []string{"users", "oauth_sessions", "oauth_auth_requests", "claims", "sync_prefs", "session_starts", "game_cache", "keytrace_key_cache"}
 	for _, table := range tables {
 		var name string
 		if err := conn.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name); err != nil {

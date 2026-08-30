@@ -17,9 +17,9 @@ type SteamClaim struct {
 
 func UpsertSteamClaim(ctx context.Context, conn *sql.DB, c SteamClaim) error {
 	_, err := conn.ExecContext(ctx, `
-		INSERT INTO steam_claims (did, subject, display_name, claim_uri, record_uri, last_verified_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(did) DO UPDATE SET
+		INSERT INTO claims (did, claim_type, subject, display_name, claim_uri, record_uri, last_verified_at)
+		VALUES (?, 'steam', ?, ?, ?, ?, ?)
+		ON CONFLICT(did, claim_type) DO UPDATE SET
 			subject = excluded.subject, display_name = excluded.display_name,
 			claim_uri = excluded.claim_uri, record_uri = excluded.record_uri,
 			last_verified_at = excluded.last_verified_at
@@ -30,7 +30,7 @@ func UpsertSteamClaim(ctx context.Context, conn *sql.DB, c SteamClaim) error {
 func GetSteamClaim(ctx context.Context, conn *sql.DB, did string) (*SteamClaim, error) {
 	c := SteamClaim{DID: did}
 	var lastVerifiedAt string
-	err := conn.QueryRowContext(ctx, `SELECT subject, display_name, claim_uri, record_uri, last_verified_at FROM steam_claims WHERE did = ?`, did).
+	err := conn.QueryRowContext(ctx, `SELECT subject, display_name, claim_uri, record_uri, last_verified_at FROM claims WHERE did = ? AND claim_type = 'steam'`, did).
 		Scan(&c.Subject, &c.DisplayName, &c.ClaimURI, &c.RecordURI, &lastVerifiedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -45,10 +45,10 @@ func GetSteamClaim(ctx context.Context, conn *sql.DB, did string) (*SteamClaim, 
 }
 
 // InvalidateSteamClaim removes a revoked/retracted/deleted claim. It does NOT
-// touch sync_prefs.steam_enabled — that's user intent, kept separate on
+// touch sync_prefs.enabled — that's user intent, kept separate on
 // purpose (Global Constraints) so the UI can say "enabled, but not valid"
 // instead of silently flipping the toggle.
 func InvalidateSteamClaim(ctx context.Context, conn *sql.DB, did string) error {
-	_, err := conn.ExecContext(ctx, `DELETE FROM steam_claims WHERE did = ?`, did)
+	_, err := conn.ExecContext(ctx, `DELETE FROM claims WHERE did = ? AND claim_type = 'steam'`, did)
 	return err
 }

@@ -11,15 +11,15 @@ func SetSteamEnabled(ctx context.Context, conn *sql.DB, did string, enabled bool
 		e = 1
 	}
 	_, err := conn.ExecContext(ctx, `
-		INSERT INTO sync_prefs (did, steam_enabled) VALUES (?, ?)
-		ON CONFLICT(did) DO UPDATE SET steam_enabled = excluded.steam_enabled
+		INSERT INTO sync_prefs (did, source, enabled, priority) VALUES (?, 'steam', ?, 0)
+		ON CONFLICT(did, source) DO UPDATE SET enabled = excluded.enabled
 	`, did, e)
 	return err
 }
 
 func IsSteamEnabled(ctx context.Context, conn *sql.DB, did string) (bool, error) {
 	var enabled int
-	err := conn.QueryRowContext(ctx, `SELECT steam_enabled FROM sync_prefs WHERE did = ?`, did).Scan(&enabled)
+	err := conn.QueryRowContext(ctx, `SELECT enabled FROM sync_prefs WHERE did = ? AND source = 'steam'`, did).Scan(&enabled)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
