@@ -80,7 +80,7 @@ function renderSignedIn(me: Me) {
       <section class="consent-zone">
         <label class="toggle-row">
           <span class="toggle-label">
-            <span class="toggle-label-title">Sync Steam status</span>
+            <span class="toggle-label-title">Steam</span>
             <span class="toggle-label-sub">${toggleSubtitle}</span>
           </span>
           <span class="toggle">
@@ -163,7 +163,7 @@ function renderHero(status: LiveStatus | null | 'error'): string {
 function verifiedSyncHTML(me: Me): string {
   const name = escapeHTML(me.steamDisplayName ?? me.steamSubject!)
   const profileURL = `https://steamcommunity.com/profiles/${encodeURIComponent(me.steamSubject!)}`
-  return `Syncs <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a>'s Now Playing on Steam to your account`
+  return `Sync now playing data for <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`
 }
 
 function timeAgo(iso: string): string {
