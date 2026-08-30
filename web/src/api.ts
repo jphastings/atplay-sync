@@ -6,7 +6,8 @@ export interface Me {
   discordSubject?: string
   discordDisplayName?: string
   discordEnabled: boolean
-  sourceOrder: string[]
+  sourceOrder: string[] | null
+  discordInviteUrl: string
 }
 
 export async function getMe(): Promise<Me | null> {

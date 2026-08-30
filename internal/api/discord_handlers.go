@@ -60,20 +60,35 @@ func (h *DiscordHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no verified discord claim — recheck first", http.StatusConflict)
 			return
 		}
+		if err := db.SetEnabled(r.Context(), h.Conn, did, db.DiscordSource, true); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := h.Reconciler.Reconcile(r.Context(), did, time.Now()); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	} else {
+		// A manual disable is a clean stop: clear session_starts so a later
+		// re-enable starts a fresh session instead of resuming a createdAt
+		// from before the gap, then reconcile — ClearSessionStart already
+		// ran, so Reconcile can't find a session to republish for this
+		// source regardless of what sync_prefs.enabled still says — and
+		// only THEN flip the pref, so a failed Reconcile leaves it
+		// unchanged (still enabled) rather than silently marking the
+		// source disabled when we couldn't confirm the cleanup succeeded.
 		if err := db.ClearSessionStart(r.Context(), h.Conn, did, db.DiscordSource); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-	}
-
-	if err := db.SetEnabled(r.Context(), h.Conn, did, db.DiscordSource, body.Enabled); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	if err := h.Reconciler.Reconcile(r.Context(), did, time.Now()); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		if err := h.Reconciler.Reconcile(r.Context(), did, time.Now()); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := db.SetEnabled(r.Context(), h.Conn, did, db.DiscordSource, false); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	restartJetstreamWatch(h.Jetstream, h.Conn)

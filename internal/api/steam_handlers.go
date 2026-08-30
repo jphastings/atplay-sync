@@ -65,12 +65,23 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no verified steam claim — recheck first", http.StatusConflict)
 			return
 		}
+		if err := db.SetEnabled(r.Context(), h.Conn, did, db.SteamSource, true); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := h.Reconciler.Reconcile(r.Context(), did, time.Now()); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	} else {
 		// A manual disable is a clean stop: clear session_starts so a later
 		// re-enable starts a fresh session instead of resuming a createdAt
-		// from before the gap, then re-run the reconciler rather than
-		// deleting the record outright — another still-enabled source may
-		// legitimately be populating it.
+		// from before the gap, then reconcile — ClearSessionStart already
+		// ran, so Reconcile can't find a session to republish for this
+		// source regardless of what sync_prefs.enabled still says — and
+		// only THEN flip the pref, so a failed Reconcile leaves it
+		// unchanged (still enabled) rather than silently marking the
+		// source disabled when we couldn't confirm the cleanup succeeded.
 		if err := db.ClearSessionStart(r.Context(), h.Conn, did, db.SteamSource); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -79,11 +90,10 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-	}
-
-	if err := db.SetEnabled(r.Context(), h.Conn, did, db.SteamSource, body.Enabled); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		if err := db.SetEnabled(r.Context(), h.Conn, did, db.SteamSource, false); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	restartJetstreamWatch(h.Jetstream, h.Conn)

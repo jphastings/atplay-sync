@@ -1,4 +1,4 @@
-// internal/api/steam_handlers_test.go
+// internal/api/discord_handlers_test.go
 package api
 
 import (
@@ -14,17 +14,7 @@ import (
 	appdb "github.com/jphastings/game-status/internal/db"
 )
 
-type fakeReconciler struct {
-	err   error
-	calls []string
-}
-
-func (f *fakeReconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
-	f.calls = append(f.calls, did)
-	return f.err
-}
-
-func TestSetEnabled_RejectsEnableWithoutValidClaim(t *testing.T) {
+func TestDiscordSetEnabled_RejectsEnableWithoutValidClaim(t *testing.T) {
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -32,8 +22,8 @@ func TestSetEnabled_RejectsEnableWithoutValidClaim(t *testing.T) {
 	defer conn.Close()
 	appdb.UpsertUser(context.Background(), conn, "did:plc:a")
 
-	h := &SteamHandlers{Conn: conn}
-	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":true}`))
+	h := &DiscordHandlers{Conn: conn}
+	req := httptest.NewRequest(http.MethodPost, "/api/discord/enabled", strings.NewReader(`{"enabled":true}`))
 	req = req.WithContext(context.WithValue(req.Context(), didContextKey, "did:plc:a"))
 	rec := httptest.NewRecorder()
 
@@ -44,7 +34,7 @@ func TestSetEnabled_RejectsEnableWithoutValidClaim(t *testing.T) {
 	}
 }
 
-func TestSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
+func TestDiscordSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -52,10 +42,10 @@ func TestSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.DiscordSource, Subject: "690973862245957683", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
 
-	h := &SteamHandlers{Conn: conn, Reconciler: &fakeReconciler{}}
-	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":true}`))
+	h := &DiscordHandlers{Conn: conn, Reconciler: &fakeReconciler{}}
+	req := httptest.NewRequest(http.MethodPost, "/api/discord/enabled", strings.NewReader(`{"enabled":true}`))
 	req = req.WithContext(context.WithValue(req.Context(), didContextKey, "did:plc:a"))
 	rec := httptest.NewRecorder()
 
@@ -64,13 +54,13 @@ func TestSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
-	enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource)
+	enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.DiscordSource)
 	if err != nil || !enabled {
 		t.Fatalf("IsEnabled = %v, %v, want true, nil", enabled, err)
 	}
 }
 
-func TestSetEnabled_DisableReconcilesAndClearsSession(t *testing.T) {
+func TestDiscordSetEnabled_DisableReconcilesAndClearsSession(t *testing.T) {
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -78,13 +68,13 @@ func TestSetEnabled_DisableReconcilesAndClearsSession(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
-	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
-	appdb.SetSessionStart(ctx, conn, "did:plc:a", appdb.SteamSource, "271590", time.Now())
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.DiscordSource, Subject: "690973862245957683", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.DiscordSource, true)
+	appdb.SetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource, "271590", time.Now())
 
 	reconciler := &fakeReconciler{}
-	h := &SteamHandlers{Conn: conn, Reconciler: reconciler}
-	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":false}`))
+	h := &DiscordHandlers{Conn: conn, Reconciler: reconciler}
+	req := httptest.NewRequest(http.MethodPost, "/api/discord/enabled", strings.NewReader(`{"enabled":false}`))
 	req = req.WithContext(context.WithValue(req.Context(), didContextKey, "did:plc:a"))
 	rec := httptest.NewRecorder()
 
@@ -96,15 +86,15 @@ func TestSetEnabled_DisableReconcilesAndClearsSession(t *testing.T) {
 	if len(reconciler.calls) != 1 || reconciler.calls[0] != "did:plc:a" {
 		t.Fatalf("Reconcile calls = %v, want one call for did:plc:a", reconciler.calls)
 	}
-	if row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || row != nil {
+	if row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource); err != nil || row != nil {
 		t.Fatalf("GetSessionStart = %+v, %v, want nil, nil (cleared)", row, err)
 	}
-	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || enabled {
+	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.DiscordSource); err != nil || enabled {
 		t.Fatalf("IsEnabled = %v, %v, want false, nil", enabled, err)
 	}
 }
 
-func TestSetEnabled_DisableFailsClosedWhenReconcileFails(t *testing.T) {
+func TestDiscordSetEnabled_DisableFailsClosedWhenReconcileFails(t *testing.T) {
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -112,11 +102,11 @@ func TestSetEnabled_DisableFailsClosedWhenReconcileFails(t *testing.T) {
 	defer conn.Close()
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:a")
-	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
-	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.DiscordSource, Subject: "690973862245957683", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.DiscordSource, true)
 
-	h := &SteamHandlers{Conn: conn, Reconciler: &fakeReconciler{err: errors.New("pds unreachable")}}
-	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":false}`))
+	h := &DiscordHandlers{Conn: conn, Reconciler: &fakeReconciler{err: errors.New("pds unreachable")}}
+	req := httptest.NewRequest(http.MethodPost, "/api/discord/enabled", strings.NewReader(`{"enabled":false}`))
 	req = req.WithContext(context.WithValue(req.Context(), didContextKey, "did:plc:a"))
 	rec := httptest.NewRecorder()
 
@@ -128,7 +118,7 @@ func TestSetEnabled_DisableFailsClosedWhenReconcileFails(t *testing.T) {
 	// A failed reconcile must not leave the pref flipped off with the record
 	// still live — the toggle should read as still-enabled so the UI/user
 	// can retry rather than silently drifting out of sync with the PDS.
-	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || !enabled {
+	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.DiscordSource); err != nil || !enabled {
 		t.Fatalf("IsEnabled = %v, %v, want true, nil (unchanged)", enabled, err)
 	}
 }

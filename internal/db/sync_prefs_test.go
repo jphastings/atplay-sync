@@ -128,6 +128,56 @@ func TestListEnabledSourcesByPriority_OrdersBySetSourceOrder(t *testing.T) {
 	}
 }
 
+func TestSetSourceOrder_CreatesDisabledRowForSourceWithNoExistingRow(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	mustUpsertUser(t, conn, "did:plc:a")
+
+	if err := SetSourceOrder(ctx, conn, "did:plc:a", []string{"discord", "steam"}); err != nil {
+		t.Fatalf("SetSourceOrder: %v", err)
+	}
+
+	if p := priorityFor(t, conn, "did:plc:a", "discord"); p != 0 {
+		t.Fatalf("discord priority = %d, want 0", p)
+	}
+	if p := priorityFor(t, conn, "did:plc:a", "steam"); p != 1 {
+		t.Fatalf("steam priority = %d, want 1", p)
+	}
+	for _, source := range []string{"discord", "steam"} {
+		enabled, err := IsEnabled(ctx, conn, "did:plc:a", source)
+		if err != nil {
+			t.Fatalf("IsEnabled(%s): %v", source, err)
+		}
+		if enabled {
+			t.Fatalf("%s should be created disabled by a bare reorder", source)
+		}
+	}
+}
+
+func TestSetSourceOrder_DoesNotChangeEnabledForExistingRow(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	mustUpsertUser(t, conn, "did:plc:a")
+	if err := SetEnabled(ctx, conn, "did:plc:a", SteamSource, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+
+	if err := SetSourceOrder(ctx, conn, "did:plc:a", []string{"discord", "steam"}); err != nil {
+		t.Fatalf("SetSourceOrder: %v", err)
+	}
+
+	enabled, err := IsEnabled(ctx, conn, "did:plc:a", SteamSource)
+	if err != nil {
+		t.Fatalf("IsEnabled: %v", err)
+	}
+	if !enabled {
+		t.Fatal("reorder must not disable an already-enabled row (ON CONFLICT only touches priority)")
+	}
+	if p := priorityFor(t, conn, "did:plc:a", SteamSource); p != 1 {
+		t.Fatalf("steam priority = %d, want 1", p)
+	}
+}
+
 func priorityFor(t *testing.T, conn *sql.DB, did, source string) int {
 	t.Helper()
 	var p int

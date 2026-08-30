@@ -59,11 +59,16 @@ func ListEnabledDIDs(ctx context.Context, conn *sql.DB, source string) ([]string
 }
 
 // SetSourceOrder persists a drag-to-reorder priority: order[0] is
-// highest-priority. Only touches rows already present in sync_prefs (a
-// source that's never been enabled has nothing to reorder).
+// highest-priority. Creates a disabled (enabled=0) row for any source that
+// doesn't have a sync_prefs row yet, so reordering a verified-but-never-
+// enabled source's row actually takes effect instead of silently no-op'ing.
 func SetSourceOrder(ctx context.Context, conn *sql.DB, did string, order []string) error {
 	for i, source := range order {
-		if _, err := conn.ExecContext(ctx, `UPDATE sync_prefs SET priority = ? WHERE did = ? AND source = ?`, i, did, source); err != nil {
+		_, err := conn.ExecContext(ctx, `
+			INSERT INTO sync_prefs (did, source, enabled, priority) VALUES (?, ?, 0, ?)
+			ON CONFLICT(did, source) DO UPDATE SET priority = excluded.priority
+		`, did, source, i)
+		if err != nil {
 			return err
 		}
 	}

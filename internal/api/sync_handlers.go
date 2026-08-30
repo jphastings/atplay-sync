@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/jphastings/game-status/internal/db"
 )
 
 type SyncHandlers struct {
-	Conn *sql.DB
+	Conn       *sql.DB
+	Reconciler db.Reconciler
 }
 
 type orderRequest struct {
@@ -40,6 +42,10 @@ func (h *SyncHandlers) SetOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.SetSourceOrder(r.Context(), h.Conn, did, body.Order); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := h.Reconciler.Reconcile(r.Context(), did, time.Now()); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

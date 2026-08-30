@@ -9,18 +9,20 @@ import (
 )
 
 type MeHandler struct {
-	Conn *sql.DB
+	Conn             *sql.DB
+	DiscordInviteURL string
 }
 
 type meResponse struct {
-	DID            string   `json:"did"`
-	SteamSubject   *string  `json:"steamSubject,omitempty"`
-	SteamDisplay   *string  `json:"steamDisplayName,omitempty"`
-	SteamEnabled   bool     `json:"steamEnabled"`
-	DiscordSubject *string  `json:"discordSubject,omitempty"`
-	DiscordDisplay *string  `json:"discordDisplayName,omitempty"`
-	DiscordEnabled bool     `json:"discordEnabled"`
-	SourceOrder    []string `json:"sourceOrder"` // enabled AND disabled sources, priority order — frontend appends disabled ones after enabled
+	DID              string   `json:"did"`
+	SteamSubject     *string  `json:"steamSubject,omitempty"`
+	SteamDisplay     *string  `json:"steamDisplayName,omitempty"`
+	SteamEnabled     bool     `json:"steamEnabled"`
+	DiscordSubject   *string  `json:"discordSubject,omitempty"`
+	DiscordDisplay   *string  `json:"discordDisplayName,omitempty"`
+	DiscordEnabled   bool     `json:"discordEnabled"`
+	SourceOrder      []string `json:"sourceOrder"` // enabled AND disabled sources, priority order — frontend appends disabled ones after enabled
+	DiscordInviteURL string   `json:"discordInviteUrl"`
 }
 
 // Live status isn't included here — the frontend reads it straight from the
@@ -76,6 +78,7 @@ func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.SourceOrder = sourceOrder
+	resp.DiscordInviteURL = h.DiscordInviteURL
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)

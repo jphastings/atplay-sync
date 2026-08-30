@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -102,5 +101,4 @@ func TestOpen_MigratesExistingSteamClaimsAndSyncPrefs(t *testing.T) {
 			t.Fatalf("table %s: got err=%v, want sql.ErrNoRows (should be gone)", table, err)
 		}
 	}
-	_ = context.Background
 }

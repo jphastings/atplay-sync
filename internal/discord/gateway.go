@@ -14,11 +14,12 @@ import (
 // every relevant event for the whole guild for as long as the connection
 // lives. discordgo's Session.Open handles reconnect/resume internally.
 type Gateway struct {
-	Session *discordgo.Session
-	GuildID string
-	Members *MemberCache
-	OnJoin  func(discordID string)
-	OnLeave func(discordID string)
+	Session          *discordgo.Session
+	GuildID          string
+	Members          *MemberCache
+	OnJoin           func(discordID string)
+	OnLeave          func(discordID string)
+	OnGuildPresences func(guildID string, presences []*discordgo.Presence)
 }
 
 func NewGateway(token, guildID string) (*Gateway, error) {
@@ -45,6 +46,9 @@ func (g *Gateway) handleGuildCreate(s *discordgo.Session, e *discordgo.GuildCrea
 	}
 	for _, m := range e.Members {
 		g.Members.Set(m.User.ID, m.User.Username)
+	}
+	if g.OnGuildPresences != nil {
+		g.OnGuildPresences(e.ID, e.Presences)
 	}
 }
 
@@ -83,6 +87,8 @@ func (g *Gateway) SendDM(userID, message string) error {
 	if err != nil {
 		return fmt.Errorf("open DM channel: %w", err)
 	}
-	_, err = g.Session.ChannelMessageSend(ch.ID, message)
-	return err
+	if _, err := g.Session.ChannelMessageSend(ch.ID, message); err != nil {
+		return fmt.Errorf("send DM: %w", err)
+	}
+	return nil
 }

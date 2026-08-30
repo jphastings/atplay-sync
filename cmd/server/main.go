@@ -13,6 +13,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/bwmarrin/discordgo"
 
 	"github.com/jphastings/game-status/internal/api"
 	"github.com/jphastings/game-status/internal/authstore"
@@ -128,6 +129,11 @@ func main() {
 			slog.Error("discord member remove", "discord_id", discordID, "err", err)
 		}
 	}
+	discordGateway.OnGuildPresences = func(guildID string, presences []*discordgo.Presence) {
+		for _, p := range presences {
+			presenceHandler.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: *p, GuildID: guildID})
+		}
+	}
 	if err := discordGateway.Open(); err != nil {
 		log.Fatalf("discord gateway open: %v", err)
 	}
@@ -137,7 +143,7 @@ func main() {
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
 	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
-	meHandler := &api.MeHandler{Conn: conn}
+	meHandler := &api.MeHandler{Conn: conn, DiscordInviteURL: cfg.DiscordInviteURL}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
 
 	go func() {
@@ -192,7 +198,7 @@ func main() {
 	mux.HandleFunc("POST /api/discord/recheck", oauthHandlers.RequireAuth(discordHandlers.Recheck))
 	mux.HandleFunc("POST /api/discord/enabled", oauthHandlers.RequireAuth(discordHandlers.SetEnabled))
 
-	syncHandlers := &api.SyncHandlers{Conn: conn}
+	syncHandlers := &api.SyncHandlers{Conn: conn, Reconciler: reconciler}
 	mux.HandleFunc("POST /api/sync/order", oauthHandlers.RequireAuth(syncHandlers.SetOrder))
 
 	distFS, err := fs.Sub(frontendFS, "web/dist")

@@ -22,10 +22,10 @@ type detectableEntry struct {
 // Confirmed live (design session, 2026-08-30): ~77% of Discord's ~24k
 // detectable games carry one. Safe for concurrent Refresh/SteamAppID calls.
 type GameIndex struct {
-	mu             sync.RWMutex
-	steamAppID     map[string]string
-	HTTPClient     *http.Client
-	detectableURL  string // overridable for tests
+	mu            sync.RWMutex
+	steamAppID    map[string]string
+	HTTPClient    *http.Client
+	detectableURL string // overridable for tests
 }
 
 func NewGameIndex() *GameIndex {

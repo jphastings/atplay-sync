@@ -129,7 +129,9 @@ function sourceRowHTML(source: Source, me: Me): string {
   const label = source === 'steam' ? 'Steam' : 'Discord'
   const subtitle = connected
     ? (source === 'steam' ? verifiedSyncHTML(me) : verifiedDiscordSyncHTML(me))
-    : `You must <a href="https://keytrace.dev/add/${source}" target="_blank" rel="noopener noreferrer">link your ${label} account</a> before you can sync it`
+    : source === 'discord'
+      ? `You must <a href="https://keytrace.dev/add/discord" target="_blank" rel="noopener noreferrer">link your Discord account</a> and <a href="${me.discordInviteUrl}" target="_blank" rel="noopener noreferrer">join our tracking server</a> before you can sync it`
+      : `You must <a href="https://keytrace.dev/add/${source}" target="_blank" rel="noopener noreferrer">link your ${label} account</a> before you can sync it`
 
   return `
     <label class="toggle-row" draggable="true" data-source="${source}">
@@ -168,8 +170,9 @@ function attachSourcesListeners() {
 
   let draggedSource: string | null = null
   sources.querySelectorAll<HTMLElement>('.toggle-row').forEach((row) => {
-    row.addEventListener('dragstart', () => {
+    row.addEventListener('dragstart', (e) => {
       draggedSource = row.dataset.source ?? null
+      if (draggedSource) e.dataTransfer?.setData('text/plain', draggedSource)
     })
     row.addEventListener('dragover', (e) => e.preventDefault())
     row.addEventListener('drop', async (e) => {

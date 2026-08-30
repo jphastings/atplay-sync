@@ -8,20 +8,23 @@ import type { LiveStatus } from './atproto'
 const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error' }> = {
   'signed-out': { me: null, live: null },
   'no-claim': {
-    me: { did: 'did:plc:mockuser', steamEnabled: false, discordEnabled: false, sourceOrder: ['steam', 'discord'] },
+    me: {
+      did: 'did:plc:mockuser', steamEnabled: false, discordEnabled: false, sourceOrder: ['steam', 'discord'],
+      discordInviteUrl: 'https://discord.gg/example',
+    },
     live: null,
   },
   idle: {
     me: {
       did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
-      discordEnabled: false, sourceOrder: ['steam', 'discord'],
+      discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
     },
     live: null,
   },
   playing: {
     me: {
       did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
-      discordEnabled: false, sourceOrder: ['steam', 'discord'],
+      discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
     },
     live: {
       title: 'Slay the Spire II',
@@ -35,7 +38,7 @@ const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error
   error: {
     me: {
       did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
-      discordEnabled: false, sourceOrder: ['steam', 'discord'],
+      discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
     },
     live: 'error',
   },
@@ -44,7 +47,7 @@ const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error
       did: 'did:plc:mockuser',
       steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
       discordSubject: '690973862245957683', discordDisplayName: 'byjp', discordEnabled: true,
-      sourceOrder: ['discord', 'steam'],
+      sourceOrder: ['discord', 'steam'], discordInviteUrl: 'https://discord.gg/example',
     },
     live: {
       title: 'Slay the Spire II',

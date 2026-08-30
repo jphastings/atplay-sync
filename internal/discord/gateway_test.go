@@ -32,6 +32,42 @@ func TestHandleGuildCreate_SeedsMemberCacheForTrackedGuildOnly(t *testing.T) {
 	}
 }
 
+func TestHandleGuildCreate_FiresOnGuildPresencesForTrackedGuildOnly(t *testing.T) {
+	gw := &Gateway{GuildID: guildID, Members: NewMemberCache()}
+	var gotGuildID string
+	var gotPresences []*discordgo.Presence
+	gw.OnGuildPresences = func(guildID string, presences []*discordgo.Presence) {
+		gotGuildID = guildID
+		gotPresences = presences
+	}
+
+	presences := []*discordgo.Presence{
+		{User: &discordgo.User{ID: "1"}, Status: discordgo.StatusOnline},
+	}
+	gw.handleGuildCreate(nil, &discordgo.GuildCreate{Guild: &discordgo.Guild{
+		ID:        guildID,
+		Members:   []*discordgo.Member{{User: &discordgo.User{ID: "1", Username: "alice"}}},
+		Presences: presences,
+	}})
+
+	if gotGuildID != guildID {
+		t.Fatalf("OnGuildPresences guildID = %q, want %q", gotGuildID, guildID)
+	}
+	if len(gotPresences) != 1 || gotPresences[0] != presences[0] {
+		t.Fatalf("OnGuildPresences presences = %v, want %v", gotPresences, presences)
+	}
+
+	gotGuildID = ""
+	gotPresences = nil
+	gw.handleGuildCreate(nil, &discordgo.GuildCreate{Guild: &discordgo.Guild{
+		ID:        "some-other-guild",
+		Presences: []*discordgo.Presence{{User: &discordgo.User{ID: "9"}}},
+	}})
+	if gotGuildID != "" || gotPresences != nil {
+		t.Fatal("OnGuildPresences fired for an untracked guild")
+	}
+}
+
 func TestHandleMemberAdd_CachesAndFiresOnJoin(t *testing.T) {
 	gw := &Gateway{GuildID: guildID, Members: NewMemberCache()}
 	var joined string
