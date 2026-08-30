@@ -103,11 +103,12 @@ func tickOne(ctx context.Context, conn *sql.DB, resolver GameResolver, writer Re
 			return nil // not resolvable — skip the write this tick; session_starts is already correct (spec)
 		}
 		status := ActorStatus{
-			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI, Platform: "steam",
+			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI,
 			Playing:   map[string]any{},
 			Embed:     &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
 			CreatedAt: decision.CreatedAt.UTC().Format(time.RFC3339),
 			StaleAt:   now.Add(staleBuffer).UTC().Format(time.RFC3339),
+			Via:       ViaClientName,
 		}
 		return writer.PutStatus(ctx, did, status)
 	}
