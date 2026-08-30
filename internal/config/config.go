@@ -21,6 +21,10 @@ type Config struct {
 
 	SteamAPIKey          string
 	SteamDailyCallBudget int
+
+	DiscordBotToken  string
+	DiscordGuildID   string
+	DiscordInviteURL string
 }
 
 func Load() (*Config, error) {
@@ -71,6 +75,24 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("STEAM_DAILY_CALL_BUDGET must be an integer: %w", err)
 	}
 	cfg.SteamDailyCallBudget = budget
+
+	discordToken, err := requireEnv("DISCORD_BOT_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	cfg.DiscordBotToken = discordToken
+
+	discordGuildID, err := requireEnv("DISCORD_GUILD_ID")
+	if err != nil {
+		return nil, err
+	}
+	cfg.DiscordGuildID = discordGuildID
+
+	discordInviteURL, err := requireEnv("DISCORD_INVITE_URL")
+	if err != nil {
+		return nil, err
+	}
+	cfg.DiscordInviteURL = discordInviteURL
 
 	return cfg, nil
 }

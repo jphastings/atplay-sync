@@ -37,4 +37,10 @@ func TestMeHandler_ReturnsClaimAndPrefs(t *testing.T) {
 	if got.DID != "did:plc:abc" || got.SteamSubject == nil || *got.SteamSubject != "765" || !got.SteamEnabled {
 		t.Fatalf("got %+v", got)
 	}
+	if got.DiscordSubject != nil || got.DiscordEnabled {
+		t.Fatalf("got %+v, want no discord claim/enablement", got)
+	}
+	if len(got.SourceOrder) != 1 || got.SourceOrder[0] != appdb.SteamSource {
+		t.Fatalf("got sourceOrder %v, want [steam]", got.SourceOrder)
+	}
 }

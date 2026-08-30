@@ -89,3 +89,25 @@ func ListEnabledSourcesByPriority(ctx context.Context, conn *sql.DB, did string)
 	}
 	return sources, rows.Err()
 }
+
+// ListAllSourcesOrdered returns every sync_prefs source for this user,
+// enabled ones first (each ordered by priority), disabled ones after —
+// unlike ListEnabledSourcesByPriority, this includes disabled sources so
+// the frontend can render the full drag list.
+func ListAllSourcesOrdered(ctx context.Context, conn *sql.DB, did string) ([]string, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT source FROM sync_prefs WHERE did = ? ORDER BY enabled DESC, priority ASC`, did)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sources []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	return sources, rows.Err()
+}

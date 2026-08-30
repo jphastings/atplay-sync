@@ -13,10 +13,14 @@ type MeHandler struct {
 }
 
 type meResponse struct {
-	DID          string  `json:"did"`
-	SteamSubject *string `json:"steamSubject,omitempty"`
-	SteamDisplay *string `json:"steamDisplayName,omitempty"`
-	SteamEnabled bool    `json:"steamEnabled"`
+	DID            string   `json:"did"`
+	SteamSubject   *string  `json:"steamSubject,omitempty"`
+	SteamDisplay   *string  `json:"steamDisplayName,omitempty"`
+	SteamEnabled   bool     `json:"steamEnabled"`
+	DiscordSubject *string  `json:"discordSubject,omitempty"`
+	DiscordDisplay *string  `json:"discordDisplayName,omitempty"`
+	DiscordEnabled bool     `json:"discordEnabled"`
+	SourceOrder    []string `json:"sourceOrder"` // enabled AND disabled sources, priority order — frontend appends disabled ones after enabled
 }
 
 // Live status isn't included here — the frontend reads it straight from the
@@ -32,22 +36,46 @@ func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	resp := meResponse{DID: did}
 
-	claim, err := db.GetClaim(r.Context(), h.Conn, did, db.SteamSource)
+	steamClaim, err := db.GetClaim(r.Context(), h.Conn, did, db.SteamSource)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if claim != nil {
-		resp.SteamSubject = &claim.Subject
-		resp.SteamDisplay = &claim.DisplayName
+	if steamClaim != nil {
+		resp.SteamSubject = &steamClaim.Subject
+		resp.SteamDisplay = &steamClaim.DisplayName
 	}
 
-	enabled, err := db.IsEnabled(r.Context(), h.Conn, did, db.SteamSource)
+	steamEnabled, err := db.IsEnabled(r.Context(), h.Conn, did, db.SteamSource)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	resp.SteamEnabled = enabled
+	resp.SteamEnabled = steamEnabled
+
+	discordClaim, err := db.GetClaim(r.Context(), h.Conn, did, db.DiscordSource)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if discordClaim != nil {
+		resp.DiscordSubject = &discordClaim.Subject
+		resp.DiscordDisplay = &discordClaim.DisplayName
+	}
+
+	discordEnabled, err := db.IsEnabled(r.Context(), h.Conn, did, db.DiscordSource)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	resp.DiscordEnabled = discordEnabled
+
+	sourceOrder, err := db.ListAllSourcesOrdered(r.Context(), h.Conn, did)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	resp.SourceOrder = sourceOrder
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)

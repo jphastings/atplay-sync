@@ -20,6 +20,7 @@ import (
 	"github.com/jphastings/game-status/internal/claims"
 	"github.com/jphastings/game-status/internal/config"
 	"github.com/jphastings/game-status/internal/db"
+	"github.com/jphastings/game-status/internal/discord"
 	"github.com/jphastings/game-status/internal/jetstream"
 	"github.com/jphastings/game-status/internal/keytrace"
 	"github.com/jphastings/game-status/internal/steam"
@@ -93,10 +94,46 @@ func main() {
 	steamClient := steam.New(cfg.SteamAPIKey)
 	steamBudget := steam.NewBudget(cfg.SteamDailyCallBudget)
 
+	discordGateway, err := discord.NewGateway(cfg.DiscordBotToken, cfg.DiscordGuildID)
+	if err != nil {
+		log.Fatalf("discord gateway: %v", err)
+	}
+	discordResolver := &discord.ClaimResolver{Members: discordGateway.Members}
+	gameIndex := discord.NewGameIndex()
+	if err := gameIndex.Refresh(context.Background()); err != nil {
+		log.Fatalf("discord detectable games: %v", err)
+	}
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := gameIndex.Refresh(context.Background()); err != nil {
+				slog.Error("discord detectable games refresh", "err", err)
+			}
+		}
+	}()
+
 	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
 	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer}
 
-	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Reconciler: reconciler}
+	presenceHandler := &discord.PresenceHandler{Conn: conn, GuildID: cfg.DiscordGuildID, Games: gameIndex, Reconciler: reconciler}
+	discordGateway.Session.AddHandler(presenceHandler.HandlePresenceUpdate)
+	discordGateway.OnJoin = func(discordID string) {
+		if err := discordGateway.SendDM(discordID, "Link your atmosphere account: https://keytrace.dev/add/discord, then check your sync settings at "+cfg.BaseURL); err != nil {
+			slog.Error("discord onboarding dm", "discord_id", discordID, "err", err)
+		}
+	}
+	discordGateway.OnLeave = func(discordID string) {
+		if err := presenceHandler.HandleGuildMemberRemove(context.Background(), discordID); err != nil {
+			slog.Error("discord member remove", "discord_id", discordID, "err", err)
+		}
+	}
+	if err := discordGateway.Open(); err != nil {
+		log.Fatalf("discord gateway open: %v", err)
+	}
+	defer discordGateway.Close()
+
+	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Resolver: discordResolver, Reconciler: reconciler}
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
 	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
@@ -126,7 +163,7 @@ func main() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := claims.RunSweep(context.Background(), conn, recordFetcher, verifier, reconciler); err != nil {
+			if err := claims.RunSweep(context.Background(), conn, recordFetcher, verifier, discordResolver, reconciler); err != nil {
 				slog.Error("daily claim sweep", "err", err)
 			}
 			if err := store.DeleteStaleAuthRequests(context.Background()); err != nil {
@@ -136,7 +173,7 @@ func main() {
 	}()
 
 	jetHandler := func(ctx context.Context, ev jetstream.Event) error {
-		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn, Reconciler: reconciler}, verifier, ev)
+		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn, Reconciler: reconciler}, verifier, discordResolver, ev)
 	}
 	jetManager := jetstream.NewManager("jetstream2.us-east.bsky.network", jetHandler)
 
@@ -150,6 +187,13 @@ func main() {
 	}
 	steamHandlers.Jetstream = jetManager
 	oauthHandlers.Jetstream = jetManager
+
+	discordHandlers := &api.DiscordHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Resolver: discordResolver, Reconciler: reconciler, Jetstream: jetManager}
+	mux.HandleFunc("POST /api/discord/recheck", oauthHandlers.RequireAuth(discordHandlers.Recheck))
+	mux.HandleFunc("POST /api/discord/enabled", oauthHandlers.RequireAuth(discordHandlers.SetEnabled))
+
+	syncHandlers := &api.SyncHandlers{Conn: conn}
+	mux.HandleFunc("POST /api/sync/order", oauthHandlers.RequireAuth(syncHandlers.SetOrder))
 
 	distFS, err := fs.Sub(frontendFS, "web/dist")
 	if err != nil {
