@@ -77,6 +77,7 @@ func main() {
 	mux.HandleFunc("GET /oauth/jwks.json", oauthHandlers.JWKS)
 	mux.HandleFunc("GET /login", oauthHandlers.Login)
 	mux.HandleFunc("GET /oauth/callback", oauthHandlers.Callback)
+	mux.HandleFunc("GET /logout", oauthHandlers.Logout)
 
 	dir := identity.DefaultDirectory()
 	trustedDIDs, err := resolveTrustedDIDs(context.Background(), dir, keytrace.DefaultTrustedSignerHandles)
@@ -94,7 +95,7 @@ func main() {
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
 	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
-	meHandler := &api.MeHandler{Conn: conn, App: oauthApp}
+	meHandler := &api.MeHandler{Conn: conn}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
 
 	cartridgeClient := cartridge.New(cfg.CartridgeHost, cfg.CartridgeClientKey, conn)

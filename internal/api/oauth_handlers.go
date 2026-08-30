@@ -71,6 +71,14 @@ func (h *OAuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
+func (h *OAuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: "", Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: -1,
+	})
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
 func (h *OAuthHandlers) stateCookieMatches(r *http.Request) bool {
 	cookie, err := r.Cookie(oauthStateCookieName)
 	if err != nil {

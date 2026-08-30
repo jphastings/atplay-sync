@@ -3,7 +3,6 @@ export interface Me {
   steamSubject?: string
   steamDisplayName?: string
   steamEnabled: boolean
-  live?: { game: string; platform?: string }
 }
 
 export async function getMe(): Promise<Me | null> {
