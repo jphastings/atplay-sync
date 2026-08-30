@@ -10,31 +10,47 @@ export function parseAtUri(uri: string): { did: string; collection: string; rkey
   return { did: m[1], collection: m[2], rkey: m[3] }
 }
 
-const didDocCache = new Map<string, Promise<string | null>>()
+interface DIDDoc {
+  service?: { id: string; serviceEndpoint: string }[]
+  alsoKnownAs?: string[]
+}
 
-/** Resolves a DID to its PDS's base URL (e.g. "https://eurosky.social"), or null if it can't be resolved. */
-export function resolvePDS(did: string): Promise<string | null> {
+const didDocCache = new Map<string, Promise<DIDDoc | null>>()
+
+function resolveDIDDoc(did: string): Promise<DIDDoc | null> {
   let promise = didDocCache.get(did)
   if (!promise) {
-    promise = resolvePDSUncached(did)
+    promise = resolveDIDDocUncached(did)
     didDocCache.set(did, promise)
   }
   return promise
 }
 
-async function resolvePDSUncached(did: string): Promise<string | null> {
+async function resolveDIDDocUncached(did: string): Promise<DIDDoc | null> {
   try {
     const docURL = did.startsWith('did:web:')
       ? `https://${did.slice('did:web:'.length)}/.well-known/did.json`
       : `https://plc.directory/${did}`
     const res = await fetch(docURL)
     if (!res.ok) return null
-    const doc = await res.json()
-    const svc = (doc.service ?? []).find((s: { id: string }) => s.id === '#atproto_pds')
-    return svc?.serviceEndpoint ?? null
+    return await res.json()
   } catch {
     return null
   }
+}
+
+/** Resolves a DID to its PDS's base URL (e.g. "https://eurosky.social"), or null if it can't be resolved. */
+export async function resolvePDS(did: string): Promise<string | null> {
+  const doc = await resolveDIDDoc(did)
+  const svc = doc?.service?.find((s) => s.id === '#atproto_pds')
+  return svc?.serviceEndpoint ?? null
+}
+
+/** Resolves a DID to its handle (e.g. "byjp.me"), or null if it can't be resolved. */
+export async function resolveHandle(did: string): Promise<string | null> {
+  const doc = await resolveDIDDoc(did)
+  const handleURI = doc?.alsoKnownAs?.find((a) => a.startsWith('at://'))
+  return handleURI ? handleURI.slice('at://'.length) : null
 }
 
 export type RecordResult<T> =

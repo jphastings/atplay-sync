@@ -62,7 +62,7 @@ html, body {
 
 h1, h2 { margin: 0; }
 
-a { color: var(--primary-bright); }
+a { color: var(--primary-bright); text-decoration: underline; text-underline-offset: 2px; }
 
 button {
   font-family: inherit;

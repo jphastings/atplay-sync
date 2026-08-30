@@ -1,5 +1,5 @@
 import { getMe, recheckClaim, setSteamEnabled, type Me } from './api'
-import { resolveLiveStatus, type LiveStatus } from './atproto'
+import { resolveLiveStatus, resolveHandle, type LiveStatus } from './atproto'
 import { watchOwnStatus } from './jetstream'
 import { mockMe, mockLiveStatus } from './devmock'
 
@@ -76,7 +76,7 @@ function renderSignedIn(me: Me) {
 
       <section class="consent-zone">
         <div class="claim-row">
-          <span class="claim-status ${claim.attention ? 'claim-status--attention' : ''}">${claim.text}</span>
+          <span class="claim-status ${claim.attention ? 'claim-status--attention' : ''}">${claim.html}</span>
           <button class="btn btn-ghost" id="recheck" type="button">Recheck claim</button>
         </div>
         <label class="toggle-row">
@@ -93,7 +93,7 @@ function renderSignedIn(me: Me) {
       </section>
 
       <footer class="utility-row">
-        <span class="did-tag">${me.did}</span>
+        <span class="did-tag" id="identity-tag">${me.did}</span>
         <button class="btn btn-ghost" id="signout" type="button">Sign out</button>
       </footer>
     </div></div>
@@ -118,6 +118,7 @@ function renderSignedIn(me: Me) {
 
   loadLiveStatus(me.did)
   watchOwnStatus(me.did, () => loadLiveStatus(me.did))
+  loadHandle(me.did)
 }
 
 async function loadLiveStatus(did: string) {
@@ -125,6 +126,13 @@ async function loadLiveStatus(did: string) {
   if (!hero) return // user navigated away from the signed-in screen since this was kicked off
   const status = await currentLiveStatus(did)
   hero.outerHTML = renderHero(status)
+}
+
+async function loadHandle(did: string) {
+  const handle = await resolveHandle(did)
+  const tag = document.getElementById('identity-tag')
+  if (!handle || !tag) return // resolution failed, or the panel's moved on — the DID is a fine fallback
+  tag.textContent = `@${handle}`
 }
 
 function renderHero(status: LiveStatus | null | 'error'): string {
@@ -156,14 +164,19 @@ function renderHero(status: LiveStatus | null | 'error'): string {
   `
 }
 
-function claimStatus(me: Me): { text: string; attention: boolean } {
+function claimStatus(me: Me): { html: string; attention: boolean } {
   if (me.steamSubject) {
-    return { text: `Verified as ${me.steamDisplayName ?? me.steamSubject}`, attention: false }
+    const name = escapeHTML(me.steamDisplayName ?? me.steamSubject)
+    const profileURL = `https://steamcommunity.com/profiles/${encodeURIComponent(me.steamSubject)}`
+    return {
+      html: `Verified as <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`,
+      attention: false,
+    }
   }
   if (me.steamEnabled) {
-    return { text: 'Claim needs re-verifying — verify at keytrace.dev, then Recheck', attention: true }
+    return { html: 'Claim needs re-verifying — verify at keytrace.dev, then Recheck', attention: true }
   }
-  return { text: 'Not connected — verify at keytrace.dev, then Recheck', attention: false }
+  return { html: 'Not connected — verify at keytrace.dev, then Recheck', attention: false }
 }
 
 function timeAgo(iso: string): string {

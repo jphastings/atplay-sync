@@ -70,6 +70,19 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no verified steam claim — recheck first", http.StatusConflict)
 			return
 		}
+	} else {
+		// A manual disable is a clean stop: remove the live record immediately
+		// rather than leaving it to go stale, and clear session_starts so a
+		// later re-enable starts a fresh session instead of resuming a
+		// createdAt from before the gap.
+		if err := db.ClearSessionStart(r.Context(), h.Conn, did, db.SteamSource); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := h.Deleter.DeleteStatus(r.Context(), did); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := db.SetSteamEnabled(r.Context(), h.Conn, did, body.Enabled); err != nil {
