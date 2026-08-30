@@ -168,7 +168,7 @@ function renderHero(status: LiveStatus | null | 'error'): string {
 function verifiedSyncHTML(me: Me): string {
   const name = escapeHTML(me.steamDisplayName ?? me.steamSubject!)
   const profileURL = `https://steamcommunity.com/profiles/${encodeURIComponent(me.steamSubject!)}`
-  return `Sync now playing data for <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`
+  return `Sync data from <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`
 }
 
 function timeAgo(iso: string): string {
