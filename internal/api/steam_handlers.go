@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
@@ -18,11 +19,11 @@ import (
 )
 
 type SteamHandlers struct {
-	App       *oauth.ClientApp
-	Conn      *sql.DB
-	Verifier  *keytrace.Verifier
-	Deleter   db.StatusDeleter
-	Jetstream *jetstream.Manager
+	App        *oauth.ClientApp
+	Conn       *sql.DB
+	Verifier   *keytrace.Verifier
+	Reconciler db.Reconciler
+	Jetstream  *jetstream.Manager
 }
 
 func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
@@ -67,15 +68,16 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// A manual disable is a clean stop: remove the live record immediately
-		// rather than leaving it to go stale, and clear session_starts so a
-		// later re-enable starts a fresh session instead of resuming a
-		// createdAt from before the gap.
+		// A manual disable is a clean stop: clear session_starts so a later
+		// re-enable starts a fresh session instead of resuming a createdAt
+		// from before the gap, then re-run the reconciler rather than
+		// deleting the record outright — another still-enabled source may
+		// legitimately be populating it.
 		if err := db.ClearSessionStart(r.Context(), h.Conn, did, db.SteamSource); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if err := h.Deleter.DeleteStatus(r.Context(), did); err != nil {
+		if err := h.Reconciler.Reconcile(r.Context(), did, time.Now()); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -106,5 +108,5 @@ func (h *SteamHandlers) discoverFor(ctx context.Context, did string) error {
 	if err != nil {
 		return err
 	}
-	return claims.Discover(ctx, sess.APIClient(), h.Verifier, h.Conn, h.Deleter, did)
+	return claims.Discover(ctx, sess.APIClient(), h.Verifier, h.Conn, h.Reconciler, did)
 }

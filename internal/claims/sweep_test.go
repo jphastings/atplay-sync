@@ -24,10 +24,10 @@ func (f fakeRecordFetcher) FetchClaimRecord(ctx context.Context, atURI string) (
 	return f.claims[atURI], f.deleted[atURI], nil
 }
 
-type fakeSweepDeleter struct{ deleted []string }
+type fakeReconciler struct{ reconciled []string }
 
-func (f *fakeSweepDeleter) DeleteStatus(ctx context.Context, did string) error {
-	f.deleted = append(f.deleted, did)
+func (f *fakeReconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
+	f.reconciled = append(f.reconciled, did)
 	return nil
 }
 
@@ -39,9 +39,9 @@ func TestRunSweep_InvalidatesWhenRecordDeleted(t *testing.T) {
 	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "at://did:plc:a/dev.keytrace.claim/abc", LastVerifiedAt: time.Now()})
 
 	fetcher := fakeRecordFetcher{deleted: map[string]bool{"at://did:plc:a/dev.keytrace.claim/abc": true}}
-	deleter := &fakeSweepDeleter{}
+	reconciler := &fakeReconciler{}
 
-	if err := RunSweep(ctx, conn, fetcher, testVerifier(), deleter); err != nil {
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), reconciler); err != nil {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
@@ -49,8 +49,8 @@ func TestRunSweep_InvalidatesWhenRecordDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetClaim: %v", err)
 	}
-	if got != nil || len(deleter.deleted) != 1 {
-		t.Fatalf("got claim=%+v deleted=%v, want invalidated", got, deleter.deleted)
+	if got != nil || len(reconciler.reconciled) != 1 {
+		t.Fatalf("got claim=%+v reconciled=%v, want invalidated", got, reconciler.reconciled)
 	}
 }
 
@@ -71,7 +71,7 @@ func TestRunSweep_ReconcilesAChangedSubject(t *testing.T) {
 	}
 	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{"real-uri": &realClaim}}
 
-	if err := RunSweep(ctx, conn, fetcher, testVerifier(), &fakeSweepDeleter{}); err != nil {
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), &fakeReconciler{}); err != nil {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
@@ -99,9 +99,9 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 		t.Fatalf("unmarshal fixture: %v", err)
 	}
 	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{"real-uri": &realClaim}}
-	deleter := &fakeSweepDeleter{}
+	reconciler := &fakeReconciler{}
 
-	if err := RunSweep(ctx, conn, fetcher, testVerifier(), deleter); err != nil {
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), reconciler); err != nil {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetClaim: %v", err)
 	}
-	if got == nil || len(deleter.deleted) != 0 {
-		t.Fatalf("got claim=%+v deleted=%v, want the claim left alone", got, deleter.deleted)
+	if got == nil || len(reconciler.reconciled) != 0 {
+		t.Fatalf("got claim=%+v reconciled=%v, want the claim left alone", got, reconciler.reconciled)
 	}
 }

@@ -89,18 +89,19 @@ func main() {
 		TrustedDIDs: trustedDIDs,
 	}
 
-	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
+	cartridgeClient := cartridge.New(cfg.CartridgeHost, cfg.CartridgeClientKey, conn)
+	steamClient := steam.New(cfg.SteamAPIKey)
+	steamBudget := steam.NewBudget(cfg.SteamDailyCallBudget)
 
-	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Deleter: writer}
+	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
+	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer}
+
+	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Reconciler: reconciler}
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
 	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
 	meHandler := &api.MeHandler{Conn: conn}
 	mux.HandleFunc("GET /api/me", oauthHandlers.RequireAuth(meHandler.Get))
-
-	cartridgeClient := cartridge.New(cfg.CartridgeHost, cfg.CartridgeClientKey, conn)
-	steamClient := steam.New(cfg.SteamAPIKey)
-	steamBudget := steam.NewBudget(cfg.SteamDailyCallBudget)
 
 	go func() {
 		callsPerPoll := 0 // unknown before the first tick — NextPollInterval treats that as "check back in a minute"
@@ -125,7 +126,7 @@ func main() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := claims.RunSweep(context.Background(), conn, recordFetcher, verifier, writer); err != nil {
+			if err := claims.RunSweep(context.Background(), conn, recordFetcher, verifier, reconciler); err != nil {
 				slog.Error("daily claim sweep", "err", err)
 			}
 			if err := store.DeleteStaleAuthRequests(context.Background()); err != nil {
@@ -135,7 +136,7 @@ func main() {
 	}()
 
 	jetHandler := func(ctx context.Context, ev jetstream.Event) error {
-		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn, Deleter: writer}, verifier, ev)
+		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn, Reconciler: reconciler}, verifier, ev)
 	}
 	jetManager := jetstream.NewManager("jetstream2.us-east.bsky.network", jetHandler)
 

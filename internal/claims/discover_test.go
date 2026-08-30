@@ -68,7 +68,7 @@ func TestDiscover_UpsertsOnRealVerifiedClaim(t *testing.T) {
 	}}
 	verifier := &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
 
-	if err := Discover(ctx, client, verifier, conn, &fakeSweepDeleter{}, realClaimDID); err != nil {
+	if err := Discover(ctx, client, verifier, conn, &fakeReconciler{}, realClaimDID); err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
 
@@ -90,9 +90,9 @@ func TestDiscover_InvalidatesWhenNoVerifiedClaimFound(t *testing.T) {
 
 	client := &fakeLexClient{records: nil} // the claim is gone
 	verifier := &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
-	deleter := &fakeSweepDeleter{}
+	reconciler := &fakeReconciler{}
 
-	if err := Discover(ctx, client, verifier, conn, deleter, realClaimDID); err != nil {
+	if err := Discover(ctx, client, verifier, conn, reconciler, realClaimDID); err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
 
@@ -103,10 +103,11 @@ func TestDiscover_InvalidatesWhenNoVerifiedClaimFound(t *testing.T) {
 	if got != nil {
 		t.Fatalf("got %+v, want nil after the claim disappears", got)
 	}
-	// The live record must not be left stranded on the PDS, and the session
-	// bookkeeping must not survive to be reused if they re-verify later.
-	if len(deleter.deleted) != 1 {
-		t.Fatalf("deleted = %v, want the live status record removed", deleter.deleted)
+	// The reconciler must be re-run so any still-legitimate record from
+	// another source isn't left stranded, and the session bookkeeping must
+	// not survive to be reused if they re-verify later.
+	if len(reconciler.reconciled) != 1 {
+		t.Fatalf("reconciled = %v, want the reconciler re-run", reconciler.reconciled)
 	}
 	session, err := appdb.GetSessionStart(ctx, conn, realClaimDID, appdb.SteamSource)
 	if err != nil {

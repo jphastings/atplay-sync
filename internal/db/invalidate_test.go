@@ -4,11 +4,12 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
-type fakeDeleter struct{ calls []string }
+type fakeReconciler struct{ calls []string }
 
-func (f *fakeDeleter) DeleteStatus(ctx context.Context, did string) error {
+func (f *fakeReconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
 	f.calls = append(f.calls, did)
 	return nil
 }
@@ -24,15 +25,15 @@ func TestInvalidateClaim_TurnsOffSync(t *testing.T) {
 	UpsertUser(ctx, conn, "did:plc:a")
 	SetEnabled(ctx, conn, "did:plc:a", SteamSource, true)
 
-	deleter := &fakeDeleter{}
-	if err := InvalidateClaim(ctx, conn, deleter, "did:plc:a", SteamSource); err != nil {
+	reconciler := &fakeReconciler{}
+	if err := InvalidateClaim(ctx, conn, reconciler, "did:plc:a", SteamSource, time.Now()); err != nil {
 		t.Fatalf("InvalidateClaim: %v", err)
 	}
 
 	if enabled, err := IsEnabled(ctx, conn, "did:plc:a", SteamSource); err != nil || enabled {
 		t.Fatalf("IsEnabled = %v, %v, want false, nil — a lost claim must turn sync off, not leave it silently waiting to resume", enabled, err)
 	}
-	if len(deleter.calls) != 1 || deleter.calls[0] != "did:plc:a" {
-		t.Fatalf("DeleteStatus calls = %v, want one call for did:plc:a", deleter.calls)
+	if len(reconciler.calls) != 1 || reconciler.calls[0] != "did:plc:a" {
+		t.Fatalf("Reconcile calls = %v, want one call for did:plc:a", reconciler.calls)
 	}
 }

@@ -82,7 +82,7 @@ func parseSweepAtURI(atURI string) (did, collection, rkey string, ok bool) {
 // RunSweep re-verifies every steam-enabled user's claim once a day — pure
 // reconciliation for whatever the Jetstream listener missed during a
 // disconnect (spec: "daily sweep"), not the primary revocation mechanism.
-func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, deleter appdb.StatusDeleter) error {
+func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, reconciler appdb.Reconciler) error {
 	dids, err := appdb.ListEnabledDIDs(ctx, conn, appdb.SteamSource)
 	if err != nil {
 		return err
@@ -102,7 +102,7 @@ func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier
 			continue // uncertain outcome — try again on tomorrow's sweep
 		}
 		if deleted || c.Status != "verified" {
-			if err := appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource); err != nil {
+			if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, appdb.SteamSource, time.Now()); err != nil {
 				return err
 			}
 			continue
@@ -113,7 +113,7 @@ func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier
 			continue
 		}
 		if !ok {
-			if err := appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource); err != nil {
+			if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, appdb.SteamSource, time.Now()); err != nil {
 				return err
 			}
 			continue

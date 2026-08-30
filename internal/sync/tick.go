@@ -75,60 +75,17 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 		return fmt.Errorf("steam GetPlayerSummaries: %w", err)
 	}
 
+	reconciler := &Reconciler{Conn: conn, Resolver: resolver, Writer: writer}
 	for steamID, did := range steamIDToDID {
 		summary, ok := summaries[steamID]
 		if !ok {
 			slog.Warn("steam omitted account from response, skipping this tick", "steam_id", steamID, "did", did)
 			continue
 		}
-		if err := tickOne(ctx, conn, resolver, writer, did, summary, now); err != nil {
+		playing := summary.GameID != ""
+		if err := UpdateSession(ctx, conn, reconciler, did, appdb.SteamSource, playing, summary.GameID, now); err != nil {
 			slog.Error("sync tick failed for account", "did", did, "err", err) // one account's failure shouldn't stop the rest
 		}
-	}
-	return nil
-}
-
-func tickOne(ctx context.Context, conn *sql.DB, resolver GameResolver, writer RecordWriter, did string, summary steam.PlayerSummary, now time.Time) error {
-	playing := summary.GameID != ""
-
-	var prev *SessionStart
-	row, err := appdb.GetSessionStart(ctx, conn, did, appdb.SteamSource)
-	if err != nil {
-		return err
-	}
-	if row != nil {
-		prev = &SessionStart{GameKey: row.GameKey, StartedAt: row.StartedAt}
-	}
-
-	decision := Decide(playing, summary.GameID, prev, now)
-
-	switch decision.Action {
-	case ActionDelete:
-		if err := writer.DeleteStatus(ctx, did); err != nil {
-			return err
-		}
-		return appdb.ClearSessionStart(ctx, conn, did, appdb.SteamSource)
-
-	case ActionWrite:
-		if err := appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, decision.GameKey, decision.CreatedAt); err != nil {
-			return err
-		}
-		game, err := resolver.GetGameBySteamID(ctx, decision.GameKey)
-		if err != nil {
-			return err
-		}
-		if game == nil {
-			return nil // not resolvable — skip the write this tick; session_starts is already correct (spec)
-		}
-		status := ActorStatus{
-			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI,
-			Playing:   map[string]any{},
-			Embed:     &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
-			CreatedAt: decision.CreatedAt.UTC().Format(time.RFC3339),
-			StaleAt:   now.Add(staleBuffer).UTC().Format(time.RFC3339),
-			Via:       ViaClientName,
-		}
-		return writer.PutStatus(ctx, did, status)
 	}
 	return nil
 }

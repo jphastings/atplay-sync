@@ -14,12 +14,12 @@ import (
 	appdb "github.com/jphastings/game-status/internal/db"
 )
 
-type fakeDeleter struct {
+type fakeReconciler struct {
 	err   error
 	calls []string
 }
 
-func (f *fakeDeleter) DeleteStatus(ctx context.Context, did string) error {
+func (f *fakeReconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
 	f.calls = append(f.calls, did)
 	return f.err
 }
@@ -70,7 +70,7 @@ func TestSetEnabled_AllowsEnableWithValidClaim(t *testing.T) {
 	}
 }
 
-func TestSetEnabled_DisableDeletesStatusAndClearsSession(t *testing.T) {
+func TestSetEnabled_DisableReconcilesAndClearsSession(t *testing.T) {
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -82,8 +82,8 @@ func TestSetEnabled_DisableDeletesStatusAndClearsSession(t *testing.T) {
 	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
 	appdb.SetSessionStart(ctx, conn, "did:plc:a", appdb.SteamSource, "271590", time.Now())
 
-	deleter := &fakeDeleter{}
-	h := &SteamHandlers{Conn: conn, Deleter: deleter}
+	reconciler := &fakeReconciler{}
+	h := &SteamHandlers{Conn: conn, Reconciler: reconciler}
 	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":false}`))
 	req = req.WithContext(context.WithValue(req.Context(), didContextKey, "did:plc:a"))
 	rec := httptest.NewRecorder()
@@ -93,8 +93,8 @@ func TestSetEnabled_DisableDeletesStatusAndClearsSession(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
-	if len(deleter.calls) != 1 || deleter.calls[0] != "did:plc:a" {
-		t.Fatalf("DeleteStatus calls = %v, want one call for did:plc:a", deleter.calls)
+	if len(reconciler.calls) != 1 || reconciler.calls[0] != "did:plc:a" {
+		t.Fatalf("Reconcile calls = %v, want one call for did:plc:a", reconciler.calls)
 	}
 	if row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || row != nil {
 		t.Fatalf("GetSessionStart = %+v, %v, want nil, nil (cleared)", row, err)
@@ -104,7 +104,7 @@ func TestSetEnabled_DisableDeletesStatusAndClearsSession(t *testing.T) {
 	}
 }
 
-func TestSetEnabled_DisableFailsClosedWhenDeleteFails(t *testing.T) {
+func TestSetEnabled_DisableFailsClosedWhenReconcileFails(t *testing.T) {
 	conn, err := appdb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -115,7 +115,7 @@ func TestSetEnabled_DisableFailsClosedWhenDeleteFails(t *testing.T) {
 	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:a", Type: appdb.SteamSource, Subject: "765", ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
 	appdb.SetEnabled(ctx, conn, "did:plc:a", appdb.SteamSource, true)
 
-	h := &SteamHandlers{Conn: conn, Deleter: &fakeDeleter{err: errors.New("pds unreachable")}}
+	h := &SteamHandlers{Conn: conn, Reconciler: &fakeReconciler{err: errors.New("pds unreachable")}}
 	req := httptest.NewRequest(http.MethodPost, "/api/steam/enabled", strings.NewReader(`{"enabled":false}`))
 	req = req.WithContext(context.WithValue(req.Context(), didContextKey, "did:plc:a"))
 	rec := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestSetEnabled_DisableFailsClosedWhenDeleteFails(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)
 	}
-	// A failed delete must not leave the pref flipped off with the record
+	// A failed reconcile must not leave the pref flipped off with the record
 	// still live — the toggle should read as still-enabled so the UI/user
 	// can retry rather than silently drifting out of sync with the PDS.
 	if enabled, err := appdb.IsEnabled(ctx, conn, "did:plc:a", appdb.SteamSource); err != nil || !enabled {
