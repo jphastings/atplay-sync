@@ -100,12 +100,13 @@ func main() {
 
 	cartridgeClient := cartridge.New(cfg.CartridgeHost, cfg.CartridgeClientKey, conn)
 	steamClient := steam.New(cfg.SteamAPIKey)
+	steamBudget := steam.NewBudget(cfg.SteamDailyCallBudget)
 
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := sync.RunTick(context.Background(), conn, steamClient, cartridgeClient, writer, time.Now()); err != nil {
+			if err := sync.RunTick(context.Background(), conn, steamClient, cartridgeClient, writer, steamBudget, time.Now()); err != nil {
 				slog.Error("sync tick", "err", err)
 			}
 		}

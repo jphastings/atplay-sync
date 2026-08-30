@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,9 +23,15 @@ func openTestDB(t *testing.T) *sql.DB {
 	return conn
 }
 
-type fakeSteamAPI struct{ summaries map[string]steam.PlayerSummary }
+type fakeSteamAPI struct {
+	summaries map[string]steam.PlayerSummary
+	err       error
+}
 
 func (f fakeSteamAPI) GetPlayerSummaries(ctx context.Context, ids []string) (map[string]steam.PlayerSummary, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.summaries, nil
 }
 
@@ -80,7 +87,7 @@ func TestRunTick_PlayingResolvableGame_WritesStatus(t *testing.T) {
 	}}
 	writer := &fakeWriter{}
 
-	if err := RunTick(ctx, conn, steamAPI, resolver, writer, time.Now()); err != nil {
+	if err := RunTick(ctx, conn, steamAPI, resolver, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
 
@@ -102,7 +109,7 @@ func TestRunTick_PlayingUnresolvableGame_SkipsWriteButRecordsSession(t *testing.
 	resolver := fakeResolver{games: map[string]*appdb.CachedGame{}} // cartridge doesn't know this appid
 	writer := &fakeWriter{}
 
-	if err := RunTick(ctx, conn, steamAPI, resolver, writer, time.Now()); err != nil {
+	if err := RunTick(ctx, conn, steamAPI, resolver, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
 	if len(writer.puts) != 0 || len(writer.deletes) != 0 {
@@ -138,7 +145,7 @@ func TestRunTick_SteamOmitsAccount_SkipsWithoutDeleteOrSessionReset(t *testing.T
 	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{}}
 	writer := &fakeWriter{}
 
-	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, time.Now()); err != nil {
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
 	if len(writer.puts) != 0 || len(writer.deletes) != 0 {
@@ -162,10 +169,47 @@ func TestRunTick_NotPlaying_Deletes(t *testing.T) {
 	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765"}}} // no GameID
 	writer := &fakeWriter{}
 
-	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, time.Now()); err != nil {
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
 	if len(writer.deletes) != 1 || writer.deletes[0] != "did:plc:a" {
 		t.Fatalf("got deletes=%+v, want [did:plc:a]", writer.deletes)
+	}
+}
+
+func TestRunTick_BudgetExhausted_SkipsTickUntouched(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedEligibleUser(t, conn, "did:plc:a", "765")
+
+	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765", GameID: "271590"}}}
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"271590": {URI: "at://cartridge/games.gamesgamesgamesgames.game/gta5", Name: "GTA V"},
+	}}
+	writer := &fakeWriter{}
+	budget := steam.NewBudget(0) // today's budget is already spent
+
+	if err := RunTick(ctx, conn, steamAPI, resolver, writer, budget, time.Now()); err != nil {
+		t.Fatalf("RunTick: %v", err)
+	}
+	if len(writer.puts) != 0 || len(writer.deletes) != 0 {
+		t.Fatalf("got puts=%+v deletes=%+v, want neither (budget exhausted, Steam never called)", writer.puts, writer.deletes)
+	}
+}
+
+func TestRunTick_RateLimited_ExhaustsBudgetAndReturnsError(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedEligibleUser(t, conn, "did:plc:a", "765")
+
+	steamAPI := fakeSteamAPI{err: steam.ErrRateLimited}
+	writer := &fakeWriter{}
+	budget := steam.NewBudget(1000)
+
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, budget, time.Now()); !errors.Is(err, steam.ErrRateLimited) {
+		t.Fatalf("RunTick err = %v, want it to wrap steam.ErrRateLimited", err)
+	}
+	if budget.Reserve(1) {
+		t.Fatal("budget.Reserve(1) after a 429 = true, want false (Exhaust should have zeroed it)")
 	}
 }

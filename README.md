@@ -3,10 +3,11 @@
 A small Go service that keeps your `games.gamesgamesgamesgames.actor.status`
 record live on your own atproto PDS while you play. Sign in with atproto OAuth,
 prove your Steam identity with a cryptographically-verified
-[keytrace](https://keytrace.dev) claim, and the service polls Steam every five
-minutes to write (and clear) your play status. A Jetstream subscription watches
-`dev.keytrace.claim` so a revoked claim stops the sync in real time, with a
-daily sweep as the backstop.
+[keytrace](https://keytrace.dev) claim, and the service polls Steam
+frequently to write (and clear) your play status, backing off automatically
+against a self-imposed daily call budget (or a real `429`) as the user base
+grows. A Jetstream subscription watches `dev.keytrace.claim` so a revoked
+claim stops the sync in real time, with a daily sweep as the backstop.
 
 ## Build
 
@@ -37,4 +38,8 @@ Optional: `LISTEN_ADDR` (default `:8080`), `DB_PATH` (default
 `CARTRIDGE_CLIENT_KEY` (cartridge.dev's game lookup API is open access
 without one — set this only if cartridge/HappyView give you a key of your
 own for better rate limits or attribution; don't reuse the key baked into
-their public frontend bundle, it identifies their app, not yours).
+their public frontend bundle, it identifies their app, not yours),
+`STEAM_DAILY_CALL_BUDGET` (default `100000` — the commonly cited, unofficial
+ceiling for a Steam Web API key; the sync loop stops calling Steam for the
+rest of the day once it's spent, whether from hitting this or from Steam
+itself returning `429`).

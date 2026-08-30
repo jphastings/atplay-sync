@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -18,7 +19,8 @@ type Config struct {
 	CartridgeHost      string
 	CartridgeClientKey string
 
-	SteamAPIKey string
+	SteamAPIKey          string
+	SteamDailyCallBudget int
 }
 
 func Load() (*Config, error) {
@@ -61,6 +63,14 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.SteamAPIKey = steamKey
+
+	// ~100,000/day is the commonly cited (unofficial) ceiling for a Steam
+	// Web API key; see internal/steam.Budget for how this is enforced.
+	budget, err := strconv.Atoi(envOr("STEAM_DAILY_CALL_BUDGET", "100000"))
+	if err != nil {
+		return nil, fmt.Errorf("STEAM_DAILY_CALL_BUDGET must be an integer: %w", err)
+	}
+	cfg.SteamDailyCallBudget = budget
 
 	return cfg, nil
 }

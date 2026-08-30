@@ -3,6 +3,7 @@ package steam
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -77,6 +78,19 @@ func TestGetPlayerSummaries_ReturnsErrorOnNonOKStatus(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "401") {
 		t.Fatalf("error = %q, want it to mention status code 401", err.Error())
+	}
+}
+
+func TestGetPlayerSummaries_429ReturnsErrRateLimited(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	c := &Client{APIKey: "key", HTTPClient: http.DefaultClient, BaseURL: server.URL}
+	_, err := c.GetPlayerSummaries(context.Background(), []string{"76500000000000000"})
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("err = %v, want ErrRateLimited", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package steam
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,7 +12,15 @@ import (
 )
 
 const defaultBaseURL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/"
-const batchSize = 100
+
+// BatchSize is how many Steam IDs GetPlayerSummaries packs into a single
+// HTTP call — exported so callers can compute calls-needed for budgeting
+// without duplicating Steam's own limit.
+const BatchSize = 100
+
+// ErrRateLimited means Steam itself returned 429 — its own enforcement, a
+// more reliable signal than any self-imposed daily budget.
+var ErrRateLimited = errors.New("steam: rate limited (429)")
 
 type PlayerSummary struct {
 	SteamID       string
@@ -42,8 +51,8 @@ type summariesResponse struct {
 func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) (map[string]PlayerSummary, error) {
 	result := make(map[string]PlayerSummary, len(steamIDs))
 
-	for start := 0; start < len(steamIDs); start += batchSize {
-		end := min(start+batchSize, len(steamIDs))
+	for start := 0; start < len(steamIDs); start += BatchSize {
+		end := min(start+BatchSize, len(steamIDs))
 		batch := steamIDs[start:end]
 
 		reqURL := c.BaseURL + "?" + url.Values{"key": {c.APIKey}, "steamids": {strings.Join(batch, ",")}}.Encode()
@@ -54,6 +63,10 @@ func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) (map
 		resp, err := c.HTTPClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("steam GetPlayerSummaries: %w", err)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			return nil, ErrRateLimited
 		}
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))

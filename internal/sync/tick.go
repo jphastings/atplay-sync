@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -29,7 +30,14 @@ type RecordWriter interface {
 	DeleteStatus(ctx context.Context, did string) error
 }
 
-func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver GameResolver, writer RecordWriter, now time.Time) error {
+// CallBudget guards RunTick's Steam calls against a self-imposed daily
+// ceiling. See steam.Budget.
+type CallBudget interface {
+	Reserve(n int) bool
+	Exhaust()
+}
+
+func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver GameResolver, writer RecordWriter, budget CallBudget, now time.Time) error {
 	dids, err := appdb.ListSteamEnabledDIDs(ctx, conn)
 	if err != nil {
 		return err
@@ -52,7 +60,17 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 		steamIDToDID[claim.Subject] = did
 	}
 
+	calls := (len(steamIDs) + steam.BatchSize - 1) / steam.BatchSize
+	if calls > 0 && !budget.Reserve(calls) {
+		slog.Warn("steam daily call budget exhausted, skipping this tick", "accounts", len(steamIDs), "calls_needed", calls)
+		return nil
+	}
+
 	summaries, err := steamAPI.GetPlayerSummaries(ctx, steamIDs)
+	if errors.Is(err, steam.ErrRateLimited) {
+		budget.Exhaust()
+		return fmt.Errorf("steam GetPlayerSummaries: %w", err)
+	}
 	if err != nil {
 		return fmt.Errorf("steam GetPlayerSummaries: %w", err)
 	}
