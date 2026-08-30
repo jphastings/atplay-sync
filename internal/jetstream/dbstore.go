@@ -22,6 +22,6 @@ func (s DBStore) GetClaim(ctx context.Context, did, claimType string) (*appdb.Cl
 func (s DBStore) UpsertClaim(ctx context.Context, c appdb.Claim) error {
 	return appdb.UpsertClaim(ctx, s.Conn, c)
 }
-func (s DBStore) InvalidateClaim(ctx context.Context, did string) error {
-	return appdb.InvalidateClaim(ctx, s.Conn, s.Reconciler, did, appdb.SteamSource, time.Now())
+func (s DBStore) InvalidateClaim(ctx context.Context, did, claimType string) error {
+	return appdb.InvalidateClaim(ctx, s.Conn, s.Reconciler, did, claimType, time.Now())
 }

@@ -41,7 +41,7 @@ func TestRunSweep_InvalidatesWhenRecordDeleted(t *testing.T) {
 	fetcher := fakeRecordFetcher{deleted: map[string]bool{"at://did:plc:a/dev.keytrace.claim/abc": true}}
 	reconciler := &fakeReconciler{}
 
-	if err := RunSweep(ctx, conn, fetcher, testVerifier(), reconciler); err != nil {
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), fakeSubjectResolver{}, reconciler); err != nil {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
@@ -71,7 +71,7 @@ func TestRunSweep_ReconcilesAChangedSubject(t *testing.T) {
 	}
 	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{"real-uri": &realClaim}}
 
-	if err := RunSweep(ctx, conn, fetcher, testVerifier(), &fakeReconciler{}); err != nil {
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), fakeSubjectResolver{}, &fakeReconciler{}); err != nil {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{"real-uri": &realClaim}}
 	reconciler := &fakeReconciler{}
 
-	if err := RunSweep(ctx, conn, fetcher, testVerifier(), reconciler); err != nil {
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), fakeSubjectResolver{}, reconciler); err != nil {
 		t.Fatalf("RunSweep: %v", err)
 	}
 
@@ -111,5 +111,35 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 	}
 	if got == nil || len(reconciler.reconciled) != 0 {
 		t.Fatalf("got claim=%+v reconciled=%v, want the claim left alone", got, reconciler.reconciled)
+	}
+}
+
+func TestRunSweep_DiscordNoLongerResolvable_Invalidates(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	appdb.UpsertUser(ctx, conn, realClaimDID)
+	appdb.SetEnabled(ctx, conn, realClaimDID, appdb.DiscordSource, true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{
+		DID: realClaimDID, Type: appdb.DiscordSource, Subject: "690973862245957683",
+		ClaimURI: "https://discord.gg/EvTSZhkk4P", RecordURI: "at://" + realClaimDID + "/dev.keytrace.claim/discord-rkey",
+		LastVerifiedAt: time.Now(),
+	})
+
+	var discordClaim keytrace.Claim
+	if err := json.Unmarshal([]byte(realDiscordClaimJSON), &discordClaim); err != nil {
+		t.Fatalf("unmarshal fixture: %v", err)
+	}
+	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{
+		"at://" + realClaimDID + "/dev.keytrace.claim/discord-rkey": &discordClaim,
+	}}
+	resolver := fakeSubjectResolver{resolved: map[string]string{}} // no longer in the server / renamed
+	reconciler := &fakeReconciler{}
+
+	if err := RunSweep(ctx, conn, fetcher, testVerifier(), resolver, reconciler); err != nil {
+		t.Fatalf("RunSweep: %v", err)
+	}
+	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.DiscordSource)
+	if err != nil || got != nil {
+		t.Fatalf("got %+v, %v, want invalidated", got, err)
 	}
 }
