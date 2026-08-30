@@ -20,8 +20,17 @@ type StatusDeleter interface {
 // non-idempotent local state, so a user who is revoked mid-session and later
 // re-verifies would otherwise resume the same game with the original, stale
 // createdAt, asserting a play session that spanned the whole revocation.
+//
+// Sync is turned off too — an invalidated claim means we've lost confidence
+// in the identity link, so broadcasting under it should stop rather than
+// silently resume the moment a new claim reappears. Re-enabling is a fresh,
+// explicit choice (consent is the point), not an automatic side effect of
+// re-linking.
 func InvalidateClaim(ctx context.Context, conn *sql.DB, deleter StatusDeleter, did, source string) error {
 	if err := InvalidateSteamClaim(ctx, conn, did); err != nil {
+		return err
+	}
+	if err := SetSteamEnabled(ctx, conn, did, false); err != nil {
 		return err
 	}
 	if err := ClearSessionStart(ctx, conn, did, source); err != nil {

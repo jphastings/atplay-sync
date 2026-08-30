@@ -11,6 +11,7 @@ import (
 
 	"github.com/jphastings/game-status/internal/authstore"
 	"github.com/jphastings/game-status/internal/db"
+	"github.com/jphastings/game-status/internal/jetstream"
 	"github.com/jphastings/game-status/internal/webauth"
 )
 
@@ -21,10 +22,11 @@ const (
 )
 
 type OAuthHandlers struct {
-	App     *oauth.ClientApp
-	Conn    *sql.DB
-	Cookies webauth.SignedCookies
-	BaseURL string
+	App       *oauth.ClientApp
+	Conn      *sql.DB
+	Cookies   webauth.SignedCookies
+	BaseURL   string
+	Jetstream *jetstream.Manager
 }
 
 func (h *OAuthHandlers) ClientMetadata(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +118,10 @@ func (h *OAuthHandlers) Callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// A brand-new sign-in needs to land on the Jetstream watch list right
+	// away — otherwise their first claim link (or an unlink before they
+	// ever toggle sync on) wouldn't be caught live.
+	restartJetstreamWatch(h.Jetstream, h.Conn)
 
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: h.Cookies.Encode(did), Path: "/",

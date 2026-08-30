@@ -45,6 +45,27 @@ func GetUser(ctx context.Context, conn *sql.DB, did string) (*User, error) {
 	return &u, nil
 }
 
+// ListAllDIDs returns every signed-in user, regardless of claim or sync
+// state — the Jetstream watch list needs to cover anyone who might link or
+// unlink a claim, not just accounts already syncing.
+func ListAllDIDs(ctx context.Context, conn *sql.DB) ([]string, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT did FROM users`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dids []string
+	for rows.Next() {
+		var did string
+		if err := rows.Scan(&did); err != nil {
+			return nil, err
+		}
+		dids = append(dids, did)
+	}
+	return dids, rows.Err()
+}
+
 // ListSteamEnabledDIDs returns DIDs eligible to sync right now: user intent
 // (sync_prefs) AND claim validity (steam_claims) both hold. See Global
 // Constraints — these two are intentionally never merged into one flag.

@@ -20,9 +20,6 @@
   --primary-dimmer: oklch(24% 0.06 var(--hue));
   --on-primary: oklch(15% 0.02 var(--hue));
 
-  --attention: oklch(70% 0.19 calc(var(--hue) - 20));
-  --on-attention: oklch(14% 0.02 var(--hue));
-
   --text-primary: oklch(96% 0.012 var(--hue));
   --text-secondary: oklch(80% 0.02 var(--hue));
   --text-muted: oklch(58% 0.02 var(--hue));
@@ -276,16 +273,7 @@ button {
   animation: arrive var(--dur-arrival) var(--ease-out-quart) 120ms both;
 }
 
-.claim-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  flex-wrap: wrap;
-}
-
 .claim-status { font-size: var(--text-sm); color: var(--text-secondary); }
-.claim-status--attention { color: var(--attention); }
 
 .toggle-row {
   display: flex;

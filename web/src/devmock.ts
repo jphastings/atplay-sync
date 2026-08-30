@@ -8,7 +8,6 @@ import type { LiveStatus } from './atproto'
 const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error' }> = {
   'signed-out': { me: null, live: null },
   'no-claim': { me: { did: 'did:plc:mockuser', steamEnabled: false }, live: null },
-  'claim-invalid': { me: { did: 'did:plc:mockuser', steamEnabled: true }, live: null },
   idle: {
     me: { did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true },
     live: null,

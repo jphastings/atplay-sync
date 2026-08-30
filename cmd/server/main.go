@@ -139,13 +139,16 @@ func main() {
 	}
 	jetManager := jetstream.NewManager("jetstream2.us-east.bsky.network", jetHandler)
 
+	// Every signed-in user is watched, not just those currently syncing —
+	// a first-time claim link or an unlink needs to be caught live.
 	listWatchedDIDs := func(ctx context.Context) ([]string, error) {
-		return db.ListSteamEnabledDIDs(ctx, conn)
+		return db.ListAllDIDs(ctx, conn)
 	}
 	if err := jetManager.Restart(context.Background(), listWatchedDIDs); err != nil {
 		log.Fatalf("start jetstream: %v", err)
 	}
 	steamHandlers.Jetstream = jetManager
+	oauthHandlers.Jetstream = jetManager
 
 	distFS, err := fs.Sub(frontendFS, "web/dist")
 	if err != nil {

@@ -63,7 +63,10 @@ function renderSignIn() {
 }
 
 function renderSignedIn(me: Me) {
-  const claim = claimStatus(me)
+  const connected = !!me.steamSubject
+  const toggleSubtitle = connected
+    ? "Broadcasts what you're playing to your PDS while enabled"
+    : 'You must <a href="https://keytrace.dev/add/steam" target="_blank" rel="noopener noreferrer">link your Steam account</a> before you can sync it'
 
   app.innerHTML = `
     <div class="panel-screen"><div class="panel">
@@ -75,17 +78,14 @@ function renderSignedIn(me: Me) {
       </section>
 
       <section class="consent-zone">
-        <div class="claim-row">
-          <span class="claim-status ${claim.attention ? 'claim-status--attention' : ''}">${claim.html}</span>
-          <button class="btn btn-ghost" id="recheck" type="button">Recheck claim</button>
-        </div>
+        ${connected ? `<p class="claim-status">${verifiedHTML(me)}</p>` : ''}
         <label class="toggle-row">
           <span class="toggle-label">
             <span class="toggle-label-title">Sync Steam status</span>
-            <span class="toggle-label-sub">Broadcasts what you're playing to your PDS while enabled</span>
+            <span class="toggle-label-sub">${toggleSubtitle}</span>
           </span>
           <span class="toggle">
-            <input type="checkbox" id="enabled" ${me.steamEnabled ? 'checked' : ''} ${me.steamSubject ? '' : 'disabled'} />
+            <input type="checkbox" id="enabled" ${me.steamEnabled ? 'checked' : ''} ${connected ? '' : 'disabled'} />
             <span class="toggle-track"></span>
             <span class="toggle-thumb"></span>
           </span>
@@ -99,10 +99,6 @@ function renderSignedIn(me: Me) {
     </div></div>
   `
 
-  document.getElementById('recheck')!.addEventListener('click', async () => {
-    await recheckClaim()
-    await render()
-  })
   document.getElementById('enabled')!.addEventListener('change', async (e) => {
     const input = e.target as HTMLInputElement
     const next = input.checked
@@ -164,22 +160,11 @@ function renderHero(status: LiveStatus | null | 'error'): string {
   `
 }
 
-function claimStatus(me: Me): { html: string; attention: boolean } {
-  if (me.steamSubject) {
-    const name = escapeHTML(me.steamDisplayName ?? me.steamSubject)
-    const profileURL = `https://steamcommunity.com/profiles/${encodeURIComponent(me.steamSubject)}`
-    return {
-      html: `Verified as <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`,
-      attention: false,
-    }
-  }
-  if (me.steamEnabled) {
-    return { html: 'Claim needs re-verifying — verify at keytrace.dev, then Recheck', attention: true }
-  }
-  return {
-    html: 'Unlinked Steam account. Please visit <a href="https://keytrace.dev/add/steam" target="_blank" rel="noopener noreferrer">Keytrace</a> and link your Atmosphere and Steam accounts.',
-    attention: false,
-  }
+// verifiedHTML is only called once me.steamSubject is confirmed present.
+function verifiedHTML(me: Me): string {
+  const name = escapeHTML(me.steamDisplayName ?? me.steamSubject!)
+  const profileURL = `https://steamcommunity.com/profiles/${encodeURIComponent(me.steamSubject!)}`
+  return `Verified as <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`
 }
 
 function timeAgo(iso: string): string {
