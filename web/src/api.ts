@@ -3,6 +3,10 @@ export interface Me {
   steamSubject?: string
   steamDisplayName?: string
   steamEnabled: boolean
+  discordSubject?: string
+  discordDisplayName?: string
+  discordEnabled: boolean
+  sourceOrder: string[]
 }
 
 export async function getMe(): Promise<Me | null> {
@@ -22,4 +26,23 @@ export async function setSteamEnabled(enabled: boolean): Promise<void> {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
   })
   if (!res.ok) throw new Error(`POST /api/steam/enabled: ${res.status}`)
+}
+
+export async function recheckDiscordClaim(): Promise<void> {
+  const res = await fetch('/api/discord/recheck', { method: 'POST' })
+  if (!res.ok) throw new Error(`POST /api/discord/recheck: ${res.status}`)
+}
+
+export async function setDiscordEnabled(enabled: boolean): Promise<void> {
+  const res = await fetch('/api/discord/enabled', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) throw new Error(`POST /api/discord/enabled: ${res.status}`)
+}
+
+export async function setSourceOrder(order: string[]): Promise<void> {
+  const res = await fetch('/api/sync/order', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order }),
+  })
+  if (!res.ok) throw new Error(`POST /api/sync/order: ${res.status}`)
 }
