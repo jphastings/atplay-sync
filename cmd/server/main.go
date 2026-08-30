@@ -103,9 +103,17 @@ func main() {
 	steamBudget := steam.NewBudget(cfg.SteamDailyCallBudget)
 
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
+		callsPerPoll := 0 // unknown before the first tick — NextPollInterval treats that as "check back in a minute"
+		for {
+			time.Sleep(sync.NextPollInterval(callsPerPoll, steamBudget.Remaining(), time.Now()))
+
+			dids, err := db.ListSteamEnabledDIDs(context.Background(), conn)
+			if err != nil {
+				slog.Error("sync tick", "err", err)
+				continue
+			}
+			callsPerPoll = (len(dids) + steam.BatchSize - 1) / steam.BatchSize
+
 			if err := sync.RunTick(context.Background(), conn, steamClient, cartridgeClient, writer, steamBudget, time.Now()); err != nil {
 				slog.Error("sync tick", "err", err)
 			}

@@ -40,6 +40,14 @@ func (b *Budget) Reserve(n int) bool {
 	return true
 }
 
+// Remaining reports how many calls are left in today's budget.
+func (b *Budget) Remaining() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.resetIfExpired()
+	return b.max - b.used
+}
+
 // Exhaust zeroes out whatever's left of today's budget. Call this when
 // Steam itself returns 429 — its own enforcement is the ground truth, and
 // may kick in well before our self-imposed ceiling.
