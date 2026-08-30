@@ -1,11 +1,11 @@
 {
   "$type": "com.atproto.lexicon.schema",
   "lexicon": 1,
-  "id": "lexicons.games.gamesgamesgamesgames.actor.status",
+  "id": "games.gamesgamesgamesgames.actor.status",
   "defs": {
     "main": {
       "type": "record",
-      "description": "A live \"now playing a game\" status, one per account.\nConsider this record abandoned if staleAt >> now.",
+      "description": "A live \"now playing a game\" status, one per account.\nConsider this record abandoned if staleAt >> now.\nBe mindful of players' privacy preferences. Do not create this record\nwithout consent from the owner to publish their live activity, and\nconsider what 'covert play' looks like in your app.",
       "key": "literal:self",
       "record": {
         "type": "object",
@@ -22,19 +22,8 @@
           },
           "platform": {
             "type": "string",
-            "knownValues": [
-              "steam",
-              "web",
-              "gog",
-              "epic",
-              "itch",
-              "playstation",
-              "xbox",
-              "nintendo",
-              "ios",
-              "android"
-            ],
-            "description": "The storefront/platform being used"
+            "format": "at-uri",
+            "description": "The storefront/platform being used (link to a games.gamesgamesgamesgames.platform record)"
           },
           "state": {
             "type": "string",
@@ -70,7 +59,7 @@
                       "format": "did"
                     },
                     "minLength": 1,
-                    "description": "Who they are, including yourself, may be less than current count\neg. if some players don't have atproto accounts."
+                    "description": "Who they are, including yourself, may be less than current count\neg. if some players don't have atproto accounts.\nBe mindful of players' privacy preferences.\nIgnore DIDs of players who don't also have\nan equivalent record (use `id` to match)"
                   },
                   "max": {
                     "type": "integer",
@@ -97,49 +86,15 @@
             "type": "string",
             "format": "datetime",
             "description": "When this record should be considered abandoned.\nActive sessions should update this regularly (eg. every 5 mins)\nto a few minutes in the future."
+          },
+          "via": {
+            "type": "string",
+            "maxGraphemes": 64,
+            "maxLength": 640,
+            "description": "The (unique) name of the client (game/site/app/etc) which wrote this record."
           }
         }
       }
-    },
-    "steam": {
-      "type": "token",
-      "description": ""
-    },
-    "web": {
-      "type": "token",
-      "description": ""
-    },
-    "gog": {
-      "type": "token",
-      "description": ""
-    },
-    "epic": {
-      "type": "token",
-      "description": ""
-    },
-    "itch": {
-      "type": "token",
-      "description": ""
-    },
-    "playstation": {
-      "type": "token",
-      "description": ""
-    },
-    "xbox": {
-      "type": "token",
-      "description": ""
-    },
-    "nintendo": {
-      "type": "token",
-      "description": ""
-    },
-    "ios": {
-      "type": "token",
-      "description": ""
-    },
-    "android": {
-      "type": "token",
-      "description": ""
     }
   }
 }
