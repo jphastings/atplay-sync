@@ -283,7 +283,9 @@ button {
 }
 
 .toggle-label { flex: 1; font-size: var(--text-sm); }
-.toggle-label-title { display: block; color: var(--text-primary); margin-bottom: 2px; }
+.toggle-label-title { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--text-primary); margin-bottom: 2px; }
+
+.steam-icon { width: 1em; height: 1em; flex-shrink: 0; }
 .toggle-label-sub { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 
 .toggle {
