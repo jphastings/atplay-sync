@@ -65,7 +65,7 @@ function renderSignIn() {
 function renderSignedIn(me: Me) {
   const connected = !!me.steamSubject
   const toggleSubtitle = connected
-    ? "Broadcasts what you're playing to your PDS while enabled"
+    ? verifiedSyncHTML(me)
     : 'You must <a href="https://keytrace.dev/add/steam" target="_blank" rel="noopener noreferrer">link your Steam account</a> before you can sync it'
 
   app.innerHTML = `
@@ -78,7 +78,6 @@ function renderSignedIn(me: Me) {
       </section>
 
       <section class="consent-zone">
-        ${connected ? `<p class="claim-status">${verifiedHTML(me)}</p>` : ''}
         <label class="toggle-row">
           <span class="toggle-label">
             <span class="toggle-label-title">Sync Steam status</span>
@@ -160,11 +159,11 @@ function renderHero(status: LiveStatus | null | 'error'): string {
   `
 }
 
-// verifiedHTML is only called once me.steamSubject is confirmed present.
-function verifiedHTML(me: Me): string {
+// verifiedSyncHTML is only called once me.steamSubject is confirmed present.
+function verifiedSyncHTML(me: Me): string {
   const name = escapeHTML(me.steamDisplayName ?? me.steamSubject!)
   const profileURL = `https://steamcommunity.com/profiles/${encodeURIComponent(me.steamSubject!)}`
-  return `Verified as <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Steam`
+  return `Syncs <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a>'s Now Playing on Steam to your account`
 }
 
 function timeAgo(iso: string): string {

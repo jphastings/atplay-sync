@@ -273,8 +273,6 @@ button {
   animation: arrive var(--dur-arrival) var(--ease-out-quart) 120ms both;
 }
 
-.claim-status { font-size: var(--text-sm); color: var(--text-secondary); }
-
 .toggle-row {
   display: flex;
   align-items: center;
