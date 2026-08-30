@@ -17,7 +17,9 @@ type Client struct {
 
 func New(host, clientKey string, conn *sql.DB) *Client {
 	api := atclient.NewAPIClient(host)
-	api.Headers.Set("x-client-key", clientKey)
+	if clientKey != "" {
+		api.Headers.Set("x-client-key", clientKey)
+	}
 	return &Client{API: api, Conn: conn}
 }
 

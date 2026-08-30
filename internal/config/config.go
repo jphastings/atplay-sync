@@ -51,11 +51,10 @@ func Load() (*Config, error) {
 	cfg.OAuthKeyID = envOr("OAUTH_KEY_ID", "1")
 
 	cfg.CartridgeHost = envOr("CARTRIDGE_HOST", "https://gamesgamesgamesgames.games")
-	cartridgeKey, err := requireEnv("CARTRIDGE_CLIENT_KEY")
-	if err != nil {
-		return nil, err
-	}
-	cfg.CartridgeClientKey = cartridgeKey
+	// CARTRIDGE_CLIENT_KEY is optional — cartridge.dev's getGame endpoint is
+	// open access (confirmed live: unauthenticated requests return 200).
+	// Sent when set, in case it affects rate limits or attribution.
+	cfg.CartridgeClientKey = envOr("CARTRIDGE_CLIENT_KEY", "")
 
 	steamKey, err := requireEnv("STEAM_API_KEY")
 	if err != nil {

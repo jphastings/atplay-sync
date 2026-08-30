@@ -28,10 +28,13 @@ All via environment variables. Required:
 | Variable | What it is |
 | --- | --- |
 | `STEAM_API_KEY` | A [Steam Web API key](https://steamcommunity.com/dev/apikey). |
-| `CARTRIDGE_CLIENT_KEY` | Your own client key for cartridge.dev's game lookup API — ask the cartridge/HappyView team. The key in their public frontend bundle identifies *their* app, not yours; don't reuse it. |
 | `BASE_URL` | The public HTTPS origin this service is reachable on, e.g. `https://game-status.example.com`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
 | `OAUTH_PRIVATE_KEY` | A P-256 confidential-client key in multibase form. Generate with [`goat`](https://github.com/bluesky-social/goat): `goat key generate -t P-256`. |
 | `SESSION_SECRET` | 32 random bytes, hex-encoded, for signing session cookies: `openssl rand -hex 32`. |
 
 Optional: `LISTEN_ADDR` (default `:8080`), `DB_PATH` (default
-`game-status.db`), `OAUTH_KEY_ID` (default `1`), `CARTRIDGE_HOST`.
+`game-status.db`), `OAUTH_KEY_ID` (default `1`), `CARTRIDGE_HOST`,
+`CARTRIDGE_CLIENT_KEY` (cartridge.dev's game lookup API is open access
+without one — set this only if cartridge/HappyView give you a key of your
+own for better rate limits or attribution; don't reuse the key baked into
+their public frontend bundle, it identifies their app, not yours).
