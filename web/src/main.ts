@@ -33,7 +33,7 @@ async function render() {
   }
 
   if (!me.steamSubject) {
-    await recheckClaim().catch(() => {})
+    await recheckClaim().catch(() => { })
     const refreshed = await currentMe()
     renderSignedIn(refreshed ?? me)
     return
@@ -140,7 +140,7 @@ function renderHero(status: LiveStatus | null | 'error'): string {
       <section class="hero hero--empty" id="hero" aria-live="polite">
         <div class="hero-body">
           <p class="hero-eyebrow"><span class="live-dot"></span> Idle</p>
-          <p class="hero-meta">Not currently playing anything tracked.</p>
+          <p class="hero-meta">Not currently playing a game.</p>
         </div>
       </section>
     `
