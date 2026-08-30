@@ -59,11 +59,32 @@ func testVerifier() *keytrace.Verifier {
 	return &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
 }
 
-type fakeSubjectResolver struct{ resolved map[string]string } // claimUri -> resolved snowflake
+type fakeSubjectResolver struct {
+	resolved  map[string]string // claimUri -> resolved snowflake
+	confirmed map[string]bool   // currentSubject -> still confirms; nil map = always true
+}
 
 func (f fakeSubjectResolver) ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (string, bool) {
 	id, ok := f.resolved[claim.ClaimURI]
 	return id, ok
+}
+
+func (f fakeSubjectResolver) ConfirmDiscordSubject(ctx context.Context, claim keytrace.Claim, currentSubject string) bool {
+	if f.confirmed == nil {
+		return true
+	}
+	return f.confirmed[currentSubject]
+}
+
+// resolveDiscordSubjectPanics wraps fakeSubjectResolver but panics if
+// ResolveDiscordSubject is ever called — used to prove the fix's core
+// security property: once a claim row exists, full resolution (which could
+// land on a different snowflake than the one already stored) must never
+// run again, only confirmation of the existing one.
+type resolveDiscordSubjectPanics struct{ fakeSubjectResolver }
+
+func (resolveDiscordSubjectPanics) ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (string, bool) {
+	panic("ResolveDiscordSubject must not be called when a Discord claim row already exists")
 }
 
 type fakeStore struct {
@@ -167,6 +188,31 @@ func TestHandleEvent_DiscordVerifiedButUnresolved_NoUpsert(t *testing.T) {
 	}
 	if len(store.upserts) != 0 || len(store.invalidatedType) != 0 {
 		t.Fatalf("got upserts=%+v invalidatedType=%v, want neither — unresolved isn't the same as invalid", store.upserts, store.invalidatedType)
+	}
+}
+
+// The username reuse hijack: an update event re-verifies an already-tracked
+// Discord claim whose signed username has since been reclaimed by someone
+// else. It must be invalidated, never re-pointed at that new person's
+// snowflake — proven by a resolver that panics if full resolution is ever
+// attempted on an already-tracked claim.
+func TestHandleEvent_UpdateToAlreadyTrackedDiscordClaim_NoLongerConfirms_Invalidates(t *testing.T) {
+	did := "did:plc:ephkzpinhaqcabtkugtbzrwu"
+	atURI := "at://" + did + "/dev.keytrace.claim/discord-rkey"
+	store := &fakeStore{claims: map[string]*appdb.Claim{
+		appdb.DiscordSource: {DID: did, Type: appdb.DiscordSource, Subject: "690973862245957683", RecordURI: atURI},
+	}}
+	resolver := resolveDiscordSubjectPanics{fakeSubjectResolver{confirmed: map[string]bool{"690973862245957683": false}}}
+
+	ev := Event{DID: did, Collection: keytrace.ClaimCollection, Rkey: "discord-rkey", Operation: OpUpdate, Record: []byte(realDiscordClaimJSON)}
+	if err := HandleEvent(context.Background(), store, testVerifier(), resolver, ev); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(store.upserts) != 0 {
+		t.Fatalf("got upserts=%+v, want none — must never re-point at a different snowflake", store.upserts)
+	}
+	if len(store.invalidatedType) != 1 || store.invalidatedType[0] != appdb.DiscordSource {
+		t.Fatalf("invalidatedType = %v, want [discord]", store.invalidatedType)
 	}
 }
 

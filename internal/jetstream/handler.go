@@ -59,6 +59,14 @@ type Store interface {
 // the same reason as the duplicated supportedClaimTypes above.
 type SubjectResolver interface {
 	ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (subject string, ok bool)
+
+	// ConfirmDiscordSubject re-checks an ALREADY-RESOLVED snowflake ID
+	// against a claim's signed subject on re-verification. It must never
+	// return a DIFFERENT ID than the one it was asked to confirm — only
+	// true (still theirs) or false (no longer theirs, invalidate) — so a
+	// Discord username released and later reclaimed by someone else can't
+	// silently re-point an existing verified claim at their account.
+	ConfirmDiscordSubject(ctx context.Context, claim keytrace.Claim, currentSubject string) bool
 }
 
 func HandleEvent(ctx context.Context, store Store, verifier *keytrace.Verifier, resolver SubjectResolver, ev Event) error {
@@ -90,14 +98,28 @@ func HandleEvent(ctx context.Context, store Store, verifier *keytrace.Verifier, 
 
 		subject := claim.Identity.Subject
 		if claim.Type == appdb.DiscordSource {
-			resolved, ok := resolver.ResolveDiscordSubject(ctx, ev.DID, claim)
-			if !ok {
-				// verified, but not resolvable yet (e.g. hasn't joined the
-				// tracking server) — leave any existing state alone, same as
-				// claims.Discover's first-discovery handling.
-				return nil
+			existing, err := store.GetClaim(ctx, ev.DID, appdb.DiscordSource)
+			if err != nil {
+				return err
 			}
-			subject = resolved
+			if existing != nil {
+				// already resolved once — only ever confirm that snowflake is
+				// still theirs, never re-derive one from scratch (a released
+				// username could since have been reclaimed by someone else).
+				if !resolver.ConfirmDiscordSubject(ctx, claim, existing.Subject) {
+					return invalidateIfTrackedType(ctx, store, ev.DID, appdb.DiscordSource, atURI)
+				}
+				subject = existing.Subject
+			} else {
+				resolved, ok := resolver.ResolveDiscordSubject(ctx, ev.DID, claim)
+				if !ok {
+					// verified, but not resolvable yet (e.g. hasn't joined the
+					// tracking server) — leave any existing state alone, same as
+					// claims.Discover's first-discovery handling.
+					return nil
+				}
+				subject = resolved
+			}
 		}
 
 		return store.UpsertClaim(ctx, appdb.Claim{

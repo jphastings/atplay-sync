@@ -114,7 +114,12 @@ func TestRunSweep_LeavesValidClaimAlone(t *testing.T) {
 	}
 }
 
-func TestRunSweep_DiscordNoLongerResolvable_Invalidates(t *testing.T) {
+// The username reuse hijack, caught by the daily sweep: an already-resolved
+// Discord claim's stored snowflake no longer confirms (renamed / left the
+// server / username reclaimed by someone else) — it must be invalidated, and
+// full resolution (which could land on whoever holds the username now) must
+// never be attempted, proven here with a resolver that panics if it is.
+func TestRunSweep_DiscordNoLongerConfirms_Invalidates(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
 	appdb.UpsertUser(ctx, conn, realClaimDID)
@@ -132,7 +137,7 @@ func TestRunSweep_DiscordNoLongerResolvable_Invalidates(t *testing.T) {
 	fetcher := fakeRecordFetcher{claims: map[string]*keytrace.Claim{
 		"at://" + realClaimDID + "/dev.keytrace.claim/discord-rkey": &discordClaim,
 	}}
-	resolver := fakeSubjectResolver{resolved: map[string]string{}} // no longer in the server / renamed
+	resolver := resolveDiscordSubjectPanics{fakeSubjectResolver{confirmed: map[string]bool{"690973862245957683": false}}}
 	reconciler := &fakeReconciler{}
 
 	if err := RunSweep(ctx, conn, fetcher, testVerifier(), resolver, reconciler); err != nil {

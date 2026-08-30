@@ -123,16 +123,18 @@ func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier
 
 			subject := c.Identity.Subject
 			if claimType == appdb.DiscordSource {
-				resolved, ok := resolver.ResolveDiscordSubject(ctx, did, *c)
-				if !ok {
+				if !resolver.ConfirmDiscordSubject(ctx, *c, claim.Subject) {
 					// unlike first discovery, this is a regression from an
 					// already-resolved state — invalidate rather than leave stale.
+					// Never re-resolve from scratch here: a Discord username
+					// released and reclaimed by someone else must not silently
+					// re-point this claim at their account.
 					if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, claimType, time.Now()); err != nil {
 						return err
 					}
 					continue
 				}
-				subject = resolved
+				subject = claim.Subject
 			}
 
 			// The event this sweep exists to catch may have been a missed *update*

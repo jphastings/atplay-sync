@@ -74,11 +74,32 @@ func (f *fakeLexClient) LexDo(ctx context.Context, method, inputEncoding, endpoi
 	return nil
 }
 
-type fakeSubjectResolver struct{ resolved map[string]string } // claimUri -> resolved snowflake
+type fakeSubjectResolver struct {
+	resolved  map[string]string // claimUri -> resolved snowflake
+	confirmed map[string]bool   // currentSubject -> still confirms; nil map = always true
+}
 
 func (f fakeSubjectResolver) ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (string, bool) {
 	id, ok := f.resolved[claim.ClaimURI]
 	return id, ok
+}
+
+func (f fakeSubjectResolver) ConfirmDiscordSubject(ctx context.Context, claim keytrace.Claim, currentSubject string) bool {
+	if f.confirmed == nil {
+		return true
+	}
+	return f.confirmed[currentSubject]
+}
+
+// resolveDiscordSubjectPanics wraps fakeSubjectResolver but panics if
+// ResolveDiscordSubject is ever called — used to prove the fix's core
+// security property: once a claim row exists, full resolution (which could
+// land on a different snowflake than the one already stored) must never
+// run again, only confirmation of the existing one.
+type resolveDiscordSubjectPanics struct{ fakeSubjectResolver }
+
+func (resolveDiscordSubjectPanics) ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (string, bool) {
+	panic("ResolveDiscordSubject must not be called when a Discord claim row already exists")
 }
 
 func openTestDB(t *testing.T) *sql.DB {
@@ -195,5 +216,40 @@ func TestDiscover_DiscordVerifiedButUnresolved_LeavesNoRowRatherThanInvalidating
 	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.DiscordSource)
 	if err != nil || got != nil {
 		t.Fatalf("got %+v, %v, want no row (unresolved is not the same as invalid)", got, err)
+	}
+}
+
+// The username reuse hijack: a Discord claim was already resolved to a
+// snowflake, and that username has since been reclaimed by someone else. The
+// stored snowflake must be invalidated, never silently re-pointed at whoever
+// holds the username now — proven here by using a resolver that panics if
+// full resolution is ever attempted.
+func TestDiscover_DiscordExistingClaimNoLongerConfirms_Invalidates(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	appdb.UpsertUser(ctx, conn, realClaimDID)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{
+		DID: realClaimDID, Type: appdb.DiscordSource, Subject: "690973862245957683",
+		ClaimURI: "https://discord.gg/EvTSZhkk4P", RecordURI: "at://" + realClaimDID + "/dev.keytrace.claim/discord-rkey",
+		LastVerifiedAt: time.Now(),
+	})
+	discordRaw := json.RawMessage(realDiscordClaimJSON)
+	client := &fakeLexClient{records: []*agnostic.RepoListRecords_Record{
+		{Uri: "at://" + realClaimDID + "/dev.keytrace.claim/discord-rkey", Value: &discordRaw},
+	}}
+	verifier := &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
+	resolver := resolveDiscordSubjectPanics{fakeSubjectResolver{confirmed: map[string]bool{"690973862245957683": false}}}
+	reconciler := &fakeReconciler{}
+
+	if err := Discover(ctx, client, verifier, resolver, conn, reconciler, realClaimDID); err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+
+	got, err := appdb.GetClaim(ctx, conn, realClaimDID, appdb.DiscordSource)
+	if err != nil {
+		t.Fatalf("GetClaim: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("got %+v, want the claim invalidated rather than re-pointed at a different snowflake", got)
 	}
 }

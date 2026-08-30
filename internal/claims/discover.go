@@ -23,6 +23,14 @@ var supportedClaimTypes = []string{appdb.SteamSource, appdb.DiscordSource}
 // yet) — not an error, and callers must not treat it as one.
 type SubjectResolver interface {
 	ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (subject string, ok bool)
+
+	// ConfirmDiscordSubject re-checks an ALREADY-RESOLVED snowflake ID
+	// against a claim's signed subject on re-verification. It must never
+	// return a DIFFERENT ID than the one it was asked to confirm — only
+	// true (still theirs) or false (no longer theirs, invalidate) — so a
+	// Discord username released and later reclaimed by someone else can't
+	// silently re-point an existing verified claim at their account.
+	ConfirmDiscordSubject(ctx context.Context, claim keytrace.Claim, currentSubject string) bool
 }
 
 type foundClaim struct {
@@ -79,11 +87,28 @@ func Discover(ctx context.Context, client lexutil.LexClient, verifier *keytrace.
 
 		subject := fc.claim.Identity.Subject
 		if claimType == appdb.DiscordSource {
-			resolved, ok := resolver.ResolveDiscordSubject(ctx, did, fc.claim)
-			if !ok {
-				continue // verified, but not resolvable yet — leave any prior state alone
+			existing, err := appdb.GetClaim(ctx, conn, did, appdb.DiscordSource)
+			if err != nil {
+				return err
 			}
-			subject = resolved
+			if existing != nil {
+				// already resolved once — only ever confirm that snowflake is
+				// still theirs, never re-derive one from scratch (a released
+				// username could since have been reclaimed by someone else).
+				if !resolver.ConfirmDiscordSubject(ctx, fc.claim, existing.Subject) {
+					if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, claimType, time.Now()); err != nil {
+						return err
+					}
+					continue
+				}
+				subject = existing.Subject
+			} else {
+				resolved, ok := resolver.ResolveDiscordSubject(ctx, did, fc.claim)
+				if !ok {
+					continue // verified, but not resolvable yet — leave any prior state alone
+				}
+				subject = resolved
+			}
 		}
 
 		if err := appdb.UpsertClaim(ctx, conn, appdb.Claim{
