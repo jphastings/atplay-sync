@@ -47,7 +47,7 @@ function renderSignIn() {
       <div class="marquee">
         <h1 class="marquee-title">GAME<br>STATUS<br>SYNC</h1>
         <form class="signin-form" id="signin-form">
-          <label class="field-label" for="handle">Your atproto handle</label>
+          <label class="field-label" for="handle">Your Atmosphere handle</label>
           <input class="text-input" id="handle" name="handle" placeholder="your.handle" autocomplete="username" required />
           <button class="btn btn-primary" type="submit">Press Start</button>
         </form>
@@ -176,7 +176,10 @@ function claimStatus(me: Me): { html: string; attention: boolean } {
   if (me.steamEnabled) {
     return { html: 'Claim needs re-verifying — verify at keytrace.dev, then Recheck', attention: true }
   }
-  return { html: 'Not connected — verify at keytrace.dev, then Recheck', attention: false }
+  return {
+    html: 'Unlinked Steam account. Please visit <a href="https://keytrace.dev/add/steam" target="_blank" rel="noopener noreferrer">Keytrace</a> and link your Atmosphere and Steam accounts.',
+    attention: false,
+  }
 }
 
 function timeAgo(iso: string): string {
