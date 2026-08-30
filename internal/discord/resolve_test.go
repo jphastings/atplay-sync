@@ -80,3 +80,32 @@ func TestResolveDiscordSubject_NotInGuildYet_NotOK(t *testing.T) {
 		t.Fatal("ResolveDiscordSubject = true, want false — cache is empty, they haven't joined")
 	}
 }
+
+func TestConfirmDiscordSubject_StillMatches_True(t *testing.T) {
+	members := NewMemberCache()
+	members.Set("690973862245957683", "jphastings")
+	r := &ClaimResolver{Members: members}
+
+	if !r.ConfirmDiscordSubject(context.Background(), realDiscordClaim(), "690973862245957683") {
+		t.Fatal("ConfirmDiscordSubject = false, want true — username still matches the signed subject")
+	}
+}
+
+func TestConfirmDiscordSubject_UsernameChanged_False(t *testing.T) {
+	members := NewMemberCache()
+	members.Set("690973862245957683", "someone-else-now") // snowflake was reclaimed or owner renamed
+	r := &ClaimResolver{Members: members}
+
+	if r.ConfirmDiscordSubject(context.Background(), realDiscordClaim(), "690973862245957683") {
+		t.Fatal("ConfirmDiscordSubject = true, want false — snowflake maps to a different username now, preventing hijack")
+	}
+}
+
+func TestConfirmDiscordSubject_SnowflakeNotInCache_False(t *testing.T) {
+	members := NewMemberCache()
+	r := &ClaimResolver{Members: members}
+
+	if r.ConfirmDiscordSubject(context.Background(), realDiscordClaim(), "690973862245957683") {
+		t.Fatal("ConfirmDiscordSubject = true, want false — snowflake not in cache (e.g. user left guild)")
+	}
+}
