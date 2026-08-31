@@ -61,6 +61,12 @@ func (h *PresenceHandler) HandlePresenceUpdate(s *discordgo.Session, e *discordg
 		playing = true
 		extra.State = activity.State
 		extra.Details = activity.Details
+		if activity.Timestamps.StartTimestamp > 0 {
+			extra.DetailsStartedAt = time.UnixMilli(activity.Timestamps.StartTimestamp).UTC().Format(time.RFC3339)
+		}
+		if activity.Timestamps.EndTimestamp > 0 {
+			extra.DetailsEndsAt = time.UnixMilli(activity.Timestamps.EndTimestamp).UTC().Format(time.RFC3339)
+		}
 		if activity.Party.ID != "" {
 			extra.PartyID = activity.Party.ID
 			if len(activity.Party.Size) > 0 {

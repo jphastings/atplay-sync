@@ -234,6 +234,69 @@ func TestPresenceHandler_StateDetailsAndParty_Captured(t *testing.T) {
 	}
 }
 
+func TestPresenceHandler_ActivityTimestamps_MappedToDetailsStartedAtAndEndsAt(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedDiscordUser(t, conn, "did:plc:a", "690973862245957683")
+
+	games := NewGameIndex()
+	games.steamAppID = map[string]string{"356875988589740042": "570"}
+	reconciler := &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/dota2", Name: "Dota 2"},
+	}}, Writer: &fakeWriter{}}
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: games, Reconciler: reconciler}
+
+	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
+		User: &discordgo.User{ID: "690973862245957683"},
+		Activities: []*discordgo.Activity{
+			{Type: discordgo.ActivityTypeGame, ApplicationID: "356875988589740042", Details: "Diamond II",
+				Timestamps: discordgo.TimeStamps{StartTimestamp: 1735689600000, EndTimestamp: 1735693200000}},
+		},
+	}, GuildID: guildID})
+
+	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource)
+	if err != nil || row == nil {
+		t.Fatalf("GetSessionStart = %+v, %v", row, err)
+	}
+	var extra appsync.SessionExtra
+	if err := json.Unmarshal([]byte(row.Extra), &extra); err != nil {
+		t.Fatalf("unmarshal extra %q: %v", row.Extra, err)
+	}
+	if extra.DetailsStartedAt != "2025-01-01T00:00:00Z" || extra.DetailsEndsAt != "2025-01-01T01:00:00Z" {
+		t.Fatalf("got startedAt=%q endsAt=%q, want 2025-01-01T00:00:00Z / 2025-01-01T01:00:00Z", extra.DetailsStartedAt, extra.DetailsEndsAt)
+	}
+}
+
+func TestPresenceHandler_NoActivityTimestamps_DetailsStartEndOmitted(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedDiscordUser(t, conn, "did:plc:a", "690973862245957683")
+
+	games := NewGameIndex()
+	games.steamAppID = map[string]string{"356875988589740042": "570"}
+	reconciler := &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/dota2", Name: "Dota 2"},
+	}}, Writer: &fakeWriter{}}
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: games, Reconciler: reconciler}
+
+	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
+		User:       &discordgo.User{ID: "690973862245957683"},
+		Activities: []*discordgo.Activity{{Type: discordgo.ActivityTypeGame, ApplicationID: "356875988589740042"}},
+	}, GuildID: guildID})
+
+	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource)
+	if err != nil || row == nil {
+		t.Fatalf("GetSessionStart = %+v, %v", row, err)
+	}
+	var extra appsync.SessionExtra
+	if err := json.Unmarshal([]byte(row.Extra), &extra); err != nil {
+		t.Fatalf("unmarshal extra %q: %v", row.Extra, err)
+	}
+	if extra.DetailsStartedAt != "" || extra.DetailsEndsAt != "" {
+		t.Fatalf("got startedAt=%q endsAt=%q, want both empty (Discord sent no timestamps)", extra.DetailsStartedAt, extra.DetailsEndsAt)
+	}
+}
+
 func TestHandleGuildMemberRemove_InvalidatesDiscordClaim(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)

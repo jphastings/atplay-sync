@@ -111,7 +111,9 @@ func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, di
 			var extra SessionExtra
 			if err := json.Unmarshal([]byte(row.Extra), &extra); err == nil {
 				status.State = extra.State
-				status.Details = extra.Details
+				if extra.Details != "" || extra.DetailsStartedAt != "" || extra.DetailsEndsAt != "" {
+					status.Details = &Details{Event: extra.Details, StartedAt: extra.DetailsStartedAt, EndsAt: extra.DetailsEndsAt}
+				}
 				if extra.PartyID != "" || extra.PartyCurrent > 0 {
 					status.Playing.ID = extra.PartyID
 					status.Playing.Party = &Party{Current: extra.PartyCurrent, Max: extra.PartyMax, DIDs: extra.PartyDIDs}

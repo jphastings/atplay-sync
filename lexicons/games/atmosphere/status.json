@@ -32,10 +32,26 @@
             "description": "The kind of session this is (eg. \"Daily Challenge\", \"4-player game\")"
           },
           "details": {
-            "type": "string",
-            "maxGraphemes": 128,
-            "maxLength": 1280,
-            "description": "The task being handled right now in the game\neg. \"Level 5-2\", \"Ranked - Diamond II\", \"Turn 14 of 20\""
+            "type": "object",
+            "required": [],
+            "properties": {
+              "event": {
+                "type": "string",
+                "maxGraphemes": 128,
+                "maxLength": 1280,
+                "description": "A name for the task being handled right now in the game\neg. \"Level 5-2\", \"Ranked - Diamond II\", \"Turn 14 of 20\""
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "datetime",
+                "description": "When this event started."
+              },
+              "endsAt": {
+                "type": "string",
+                "format": "datetime",
+                "description": "When this event will likely end."
+              }
+            }
           },
           "playing": {
             "type": "object",

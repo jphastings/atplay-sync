@@ -208,7 +208,10 @@ func TestReconcile_ExtraPopulatesStateDetailsAndParty(t *testing.T) {
 	appdb.UpsertUser(ctx, conn, did)
 	appdb.SetEnabled(ctx, conn, did, appdb.DiscordSource, true)
 	appdb.SetSessionStart(ctx, conn, did, appdb.DiscordSource, "570", time.Now())
-	extra := SessionExtra{State: "Ranked", Details: "Diamond II", PartyID: "party-1", PartyCurrent: 2, PartyMax: 5, PartyDIDs: []string{"did:plc:a", "did:plc:b"}}
+	extra := SessionExtra{
+		State: "Ranked", Details: "Diamond II", DetailsStartedAt: "2026-08-31T10:00:00Z", DetailsEndsAt: "2026-08-31T10:30:00Z",
+		PartyID: "party-1", PartyCurrent: 2, PartyMax: 5, PartyDIDs: []string{"did:plc:a", "did:plc:b"},
+	}
 	extraJSON, _ := json.Marshal(extra)
 	if err := appdb.SetSessionExtra(ctx, conn, did, appdb.DiscordSource, string(extraJSON)); err != nil {
 		t.Fatalf("SetSessionExtra: %v", err)
@@ -227,8 +230,9 @@ func TestReconcile_ExtraPopulatesStateDetailsAndParty(t *testing.T) {
 		t.Fatalf("got puts=%+v, want 1", writer.puts)
 	}
 	status := writer.puts[0].status
-	if status.State != "Ranked" || status.Details != "Diamond II" {
-		t.Fatalf("got state=%q details=%q, want Ranked/Diamond II", status.State, status.Details)
+	if status.State != "Ranked" || status.Details == nil ||
+		status.Details.Event != "Diamond II" || status.Details.StartedAt != "2026-08-31T10:00:00Z" || status.Details.EndsAt != "2026-08-31T10:30:00Z" {
+		t.Fatalf("got state=%q details=%+v, want Ranked / {Diamond II 2026-08-31T10:00:00Z 2026-08-31T10:30:00Z}", status.State, status.Details)
 	}
 	if status.Playing.ID != "party-1" || status.Playing.Party == nil {
 		t.Fatalf("got Playing=%+v, want party-1 with a Party", status.Playing)
@@ -259,7 +263,7 @@ func TestReconcile_NoExtra_PlayingEmpty(t *testing.T) {
 		t.Fatalf("got puts=%+v, want 1", writer.puts)
 	}
 	status := writer.puts[0].status
-	if status.State != "" || status.Details != "" || status.Playing.Party != nil {
+	if status.State != "" || status.Details != nil || status.Playing.Party != nil {
 		t.Fatalf("got status=%+v, want empty State/Details/Party (Steam never sets Extra)", status)
 	}
 }
