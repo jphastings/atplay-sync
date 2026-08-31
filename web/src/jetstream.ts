@@ -14,7 +14,7 @@ export function watchOwnStatus(did: string, onChange: () => void): () => void {
 
   function connect() {
     const params = new URLSearchParams({
-      wantedCollections: 'games.gamesgamesgamesgames.actor.status',
+      wantedCollections: 'games.atmosphere.status',
       wantedDids: did,
     })
     socket = new WebSocket(`wss://${JETSTREAM_HOST}/subscribe?${params}`)

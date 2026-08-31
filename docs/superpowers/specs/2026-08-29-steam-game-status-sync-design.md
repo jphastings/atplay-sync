@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A small hosted app that keeps a user's `games.gamesgamesgamesgames.actor.status`
+A small hosted app that keeps a user's `games.atmosphere.status`
 record on their own PDS up to date with what they're currently playing on
 Steam, sourced from their `dev.keytrace.claim` (verified Steam identity).
 

@@ -1,7 +1,7 @@
 // internal/sync/status.go
 package sync
 
-const StatusCollection = "games.gamesgamesgamesgames.actor.status"
+const StatusCollection = "games.atmosphere.status"
 const statusRkey = "self"
 
 // ViaClientName identifies this app in the record's `via` field, per the

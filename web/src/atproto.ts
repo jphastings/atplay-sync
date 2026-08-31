@@ -104,7 +104,7 @@ export interface LiveStatus {
 
 /** Reads the signed-in user's live status directly from their own PDS, resolving cover art from the linked game record. Returns null if they're not currently playing anything, or 'error' if their PDS couldn't be reached. */
 export async function resolveLiveStatus(did: string): Promise<LiveStatus | null | 'error'> {
-  const status = await getRecord<StatusRecord>(did, 'games.gamesgamesgamesgames.actor.status', 'self')
+  const status = await getRecord<StatusRecord>(did, 'games.atmosphere.status', 'self')
   if (status.kind === 'notfound') return null
   if (status.kind === 'error') return 'error'
 

@@ -1,6 +1,6 @@
 # game-status
 
-A small Go service that keeps your `games.gamesgamesgamesgames.actor.status`
+A small Go service that keeps your `games.atmosphere.status`
 record live on your own atproto PDS while you play. Sign in with atproto OAuth,
 prove your Steam identity with a cryptographically-verified
 [keytrace](https://keytrace.dev) claim, and the service polls Steam — no
@@ -29,15 +29,15 @@ Requires Go and [pnpm](https://pnpm.io).
 
 All via environment variables. Required:
 
-| Variable | What it is |
-| --- | --- |
-| `STEAM_API_KEY` | A [Steam Web API key](https://steamcommunity.com/dev/apikey). See [docs/steam.md](docs/steam.md). |
-| `BASE_URL` | The public HTTPS origin this service is reachable on, e.g. `https://sync.atplay.games`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
-| `OAUTH_PRIVATE_KEY` | A P-256 confidential-client key in multibase form. Generate with [`goat`](https://github.com/bluesky-social/goat): `goat key generate -t P-256`. |
-| `SESSION_SECRET` | 32 random bytes, hex-encoded, for signing session cookies: `openssl rand -hex 32`. |
-| `DISCORD_BOT_TOKEN` | A bot token for the tracking guild's application, with the guild presences and guild members privileged intents enabled. |
-| `DISCORD_GUILD_ID` | The snowflake ID of the tracking guild the bot watches for presence. |
-| `DISCORD_INVITE_URL` | A permanent invite link to the tracking guild, shown in the "join the server" UI prompt. |
+| Variable             | What it is                                                                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `STEAM_API_KEY`      | A [Steam Web API key](https://steamcommunity.com/dev/apikey). See [docs/steam.md](docs/steam.md).                                                              |
+| `BASE_URL`           | The public HTTPS origin this service is reachable on, e.g. `https://sync.atplay.games`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
+| `OAUTH_PRIVATE_KEY`  | A P-256 confidential-client key in multibase form. Generate with [`goat`](https://github.com/bluesky-social/goat): `goat key generate -t P-256`.               |
+| `SESSION_SECRET`     | 32 random bytes, hex-encoded, for signing session cookies: `openssl rand -hex 32`.                                                                             |
+| `DISCORD_BOT_TOKEN`  | A bot token for the tracking guild's application, with the guild presences and guild members privileged intents enabled.                                       |
+| `DISCORD_GUILD_ID`   | The snowflake ID of the tracking guild the bot watches for presence.                                                                                           |
+| `DISCORD_INVITE_URL` | A permanent invite link to the tracking guild, shown in the "join the server" UI prompt.                                                                       |
 
 Optional: `LISTEN_ADDR` (default `:8080`), `DB_PATH` (default
 `game-status.db`), `OAUTH_KEY_ID` (default `1`), `CARTRIDGE_HOST`,

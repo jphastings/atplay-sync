@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A Go service that lets an atproto user sign in, verify a Steam identity via a cryptographically-checked `dev.keytrace.claim`, and have their `games.gamesgamesgamesgames.actor.status` record kept live on their own PDS while they play, via a 5-minute Steam poll plus a real-time Jetstream feed that stops syncing the moment a claim is revoked.
+**Goal:** A Go service that lets an atproto user sign in, verify a Steam identity via a cryptographically-checked `dev.keytrace.claim`, and have their `games.atmosphere.status` record kept live on their own PDS while they play, via a 5-minute Steam poll plus a real-time Jetstream feed that stops syncing the moment a claim is revoked.
 
 **Architecture:** One Go binary (stdlib `net/http`, embedded static frontend, one SQLite file via `modernc.org/sqlite`) with two background goroutines: a 5-minute Steam sync ticker and a Jetstream listener. atproto OAuth/XRPC goes through `bluesky-social/indigo`. Frontend is a single Vite+TS page with no framework.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Every write to the user's own `games.gamesgamesgamesgames.actor.status` record must be idempotent given the same upstream Steam response — no read-before-write against the PDS (spec: "Sync engine").
+- Every write to the user's own `games.atmosphere.status` record must be idempotent given the same upstream Steam response — no read-before-write against the PDS (spec: "Sync engine").
 - The only local, non-idempotent state is `session_starts` (createdAt bookkeeping). No other table mirrors PDS content.
 - Claim validity (`steam_claims` presence) is decoupled from user intent (`sync_prefs.steam_enabled`) — never let one silently overwrite the other.
 - A `dev.keytrace.claim`'s `status == "verified"` is trusted only after its `attest:*` signature cryptographically verifies against a trusted keytrace signer (this plan's addition beyond the original spec — see Task 3).
@@ -1668,9 +1668,9 @@ Add `"net/http"` to `middleware.go`'s imports.
 	oauthConfig := oauth.NewPublicConfig(cfg.BaseURL+"/oauth/client-metadata.json", cfg.BaseURL+"/oauth/callback",
 		[]string{
 			"atproto",
-			"repo:games.gamesgamesgamesgames.actor.status?action=create",
-			"repo:games.gamesgamesgamesgames.actor.status?action=update",
-			"repo:games.gamesgamesgamesgames.actor.status?action=delete",
+			"repo:games.atmosphere.status?action=create",
+			"repo:games.atmosphere.status?action=update",
+			"repo:games.atmosphere.status?action=delete",
 			// This granular repo-scope-per-action pattern is confirmed from indigo's
 			// own oauth-web-demo for a single "?action=create" case; it's not confirmed
 			// for "read" or for arbitrary third-party collections like keytrace's. If the
@@ -2794,7 +2794,7 @@ git commit -m "feat: pure sync decision logic"
 // internal/sync/status.go
 package sync
 
-const StatusCollection = "games.gamesgamesgamesgames.actor.status"
+const StatusCollection = "games.atmosphere.status"
 const statusRkey = "self"
 
 type ActorStatus struct {
@@ -3061,7 +3061,7 @@ func tickOne(ctx context.Context, conn *sql.DB, resolver GameResolver, writer Re
 			return nil // not resolvable — skip the write this tick; session_starts is already correct (spec)
 		}
 		status := ActorStatus{
-			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI, Platform: "steam",
+			Type: "games.atmosphere.status", Game: game.URI, Platform: "steam",
 			Playing:   map[string]any{},
 			Embed:     &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
 			CreatedAt: decision.CreatedAt.UTC().Format(time.RFC3339),

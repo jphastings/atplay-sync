@@ -65,9 +65,9 @@ func main() {
 	oauthConfig := oauth.NewPublicConfig(cfg.BaseURL+"/oauth/client-metadata.json", cfg.BaseURL+"/oauth/callback",
 		[]string{
 			"atproto",
-			"repo:games.gamesgamesgamesgames.actor.status?action=create",
-			"repo:games.gamesgamesgamesgames.actor.status?action=update",
-			"repo:games.gamesgamesgamesgames.actor.status?action=delete",
+			"repo:games.atmosphere.status?action=create",
+			"repo:games.atmosphere.status?action=update",
+			"repo:games.atmosphere.status?action=delete",
 			// This granular repo-scope-per-action pattern is confirmed from indigo's
 			// own oauth-web-demo for a single "?action=create" case; it's not confirmed
 			// for "read" or for arbitrary third-party collections like keytrace's. If the

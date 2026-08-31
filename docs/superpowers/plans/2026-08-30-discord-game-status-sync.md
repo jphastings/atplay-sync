@@ -403,15 +403,15 @@ Update `internal/db/sync_prefs_test.go` similarly: `SetSteamEnabled(ctx, conn, d
 
 Update every other reference across the codebase from old names to new (mechanical — same rename in each file):
 
-| Old | New |
-|---|---|
+| Old                                                                                | New                                                                                                    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `appdb.SteamClaim{DID, Subject, DisplayName, ClaimURI, RecordURI, LastVerifiedAt}` | `appdb.Claim{DID, Type: appdb.SteamSource, Subject, DisplayName, ClaimURI, RecordURI, LastVerifiedAt}` |
-| `appdb.UpsertSteamClaim(ctx, conn, c)` | `appdb.UpsertClaim(ctx, conn, c)` |
-| `appdb.GetSteamClaim(ctx, conn, did)` | `appdb.GetClaim(ctx, conn, did, appdb.SteamSource)` |
-| `appdb.InvalidateSteamClaim(ctx, conn, did)` | `appdb.DeleteClaim(ctx, conn, did, appdb.SteamSource)` |
-| `appdb.SetSteamEnabled(ctx, conn, did, enabled)` | `appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, enabled)` |
-| `appdb.IsSteamEnabled(ctx, conn, did)` | `appdb.IsEnabled(ctx, conn, did, appdb.SteamSource)` |
-| `appdb.ListSteamEnabledDIDs(ctx, conn)` | `appdb.ListEnabledDIDs(ctx, conn, appdb.SteamSource)` |
+| `appdb.UpsertSteamClaim(ctx, conn, c)`                                             | `appdb.UpsertClaim(ctx, conn, c)`                                                                      |
+| `appdb.GetSteamClaim(ctx, conn, did)`                                              | `appdb.GetClaim(ctx, conn, did, appdb.SteamSource)`                                                    |
+| `appdb.InvalidateSteamClaim(ctx, conn, did)`                                       | `appdb.DeleteClaim(ctx, conn, did, appdb.SteamSource)`                                                 |
+| `appdb.SetSteamEnabled(ctx, conn, did, enabled)`                                   | `appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, enabled)`                                         |
+| `appdb.IsSteamEnabled(ctx, conn, did)`                                             | `appdb.IsEnabled(ctx, conn, did, appdb.SteamSource)`                                                   |
+| `appdb.ListSteamEnabledDIDs(ctx, conn)`                                            | `appdb.ListEnabledDIDs(ctx, conn, appdb.SteamSource)`                                                  |
 
 Apply this table in: `internal/claims/discover.go`, `internal/claims/discover_test.go`, `internal/claims/sweep.go`, `internal/claims/sweep_test.go`, `internal/jetstream/handler.go`, `internal/jetstream/handler_test.go`, `internal/jetstream/dbstore.go`, `internal/api/steam_handlers.go`, `internal/api/steam_handlers_test.go`, `internal/api/me_handler.go`, `internal/sync/tick.go`, `internal/sync/tick_test.go`.
 
@@ -801,7 +801,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 			continue
 		}
 		return r.Writer.PutStatus(ctx, did, ActorStatus{
-			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI,
+			Type: "games.atmosphere.status", Game: game.URI,
 			Playing: map[string]any{},
 			Embed:   &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
 			CreatedAt: row.StartedAt.UTC().Format(time.RFC3339),

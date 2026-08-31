@@ -26,7 +26,7 @@ type meResponse struct {
 }
 
 // Live status isn't included here — the frontend reads it straight from the
-// user's own PDS (games.gamesgamesgamesgames.actor.status/self), which is
+// user's own PDS (games.atmosphere.status/self), which is
 // the authoritative source and is publicly readable, so there's no reason
 // to proxy it through an authenticated session on our side.
 func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {

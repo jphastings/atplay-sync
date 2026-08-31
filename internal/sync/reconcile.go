@@ -48,7 +48,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 			continue
 		}
 		return r.Writer.PutStatus(ctx, did, ActorStatus{
-			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI,
+			Type: "games.atmosphere.status", Game: game.URI,
 			Playing:   map[string]any{},
 			Embed:     &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
 			CreatedAt: row.StartedAt.UTC().Format(time.RFC3339),

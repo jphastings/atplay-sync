@@ -15,7 +15,7 @@ community, not just its author.
 
 ## Product Purpose
 
-A small control panel for the `games.gamesgamesgamesgames.actor.status`
+A small control panel for the `games.atmosphere.status`
 lexicon: it keeps a live "now playing" record on the user's own PDS while
 they play, and gives them the one thing that record can't show on its own —
 clear, immediate control over whether it's happening at all. Success is a
