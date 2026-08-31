@@ -1,4 +1,4 @@
-# game-status
+# At Play Sync
 
 A small Go service that keeps your `games.atmosphere.status`
 record live on your own atproto PDS while you play. Sign in with atproto OAuth,
