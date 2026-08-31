@@ -92,3 +92,25 @@ func TestReconcile_NobodyPlaying_Deletes(t *testing.T) {
 		t.Fatalf("got deletes=%+v, want [%s]", writer.deletes, did)
 	}
 }
+
+func TestParseAtURI(t *testing.T) {
+	cases := []struct {
+		name                              string
+		uri                               string
+		wantDID, wantCollection, wantRkey string
+		wantOK                            bool
+	}{
+		{"valid", "at://did:plc:abc/games.gamesgamesgamesgames.game/gta5", "did:plc:abc", "games.gamesgamesgamesgames.game", "gta5", true},
+		{"missing prefix", "did:plc:abc/games.gamesgamesgamesgames.game/gta5", "", "", "", false},
+		{"too few segments", "at://did:plc:abc/games.gamesgamesgamesgames.game", "", "", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			did, collection, rkey, ok := parseAtURI(c.uri)
+			if did != c.wantDID || collection != c.wantCollection || rkey != c.wantRkey || ok != c.wantOK {
+				t.Fatalf("parseAtURI(%q) = (%q,%q,%q,%v), want (%q,%q,%q,%v)",
+					c.uri, did, collection, rkey, ok, c.wantDID, c.wantCollection, c.wantRkey, c.wantOK)
+			}
+		})
+	}
+}

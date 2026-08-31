@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	appdb "github.com/jphastings/game-status/internal/db"
@@ -87,4 +88,20 @@ func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, di
 		}
 	}
 	return reconciler.Reconcile(ctx, did, now)
+}
+
+// parseAtURI splits an at:// URI into its did/collection/rkey parts. Used
+// both to derive a status record's rkey from the game record it links to,
+// and by ATProtoWriter.ListStatuses to read the rkey back off a listed
+// record's own uri.
+func parseAtURI(atURI string) (did, collection, rkey string, ok bool) {
+	const prefix = "at://"
+	if !strings.HasPrefix(atURI, prefix) {
+		return "", "", "", false
+	}
+	parts := strings.SplitN(strings.TrimPrefix(atURI, prefix), "/", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
