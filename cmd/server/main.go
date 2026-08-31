@@ -123,7 +123,7 @@ func main() {
 		}
 	}()
 
-	writer := &sync.ATProtoWriter{Resumer: resumer, Conn: conn}
+	writer := &sync.ATProtoWriter{Resumer: resumer, Conn: conn, Dir: dir}
 	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer}
 
 	presenceHandler := &discord.PresenceHandler{Conn: conn, GuildID: cfg.DiscordGuildID, Games: gameIndex, Reconciler: reconciler}

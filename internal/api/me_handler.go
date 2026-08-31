@@ -25,10 +25,11 @@ type meResponse struct {
 	DiscordInviteURL string   `json:"discordInviteUrl"`
 }
 
-// Live status isn't included here — the frontend reads it straight from the
-// user's own PDS (games.atmosphere.status/self), which is
-// the authoritative source and is publicly readable, so there's no reason
-// to proxy it through an authenticated session on our side.
+// Live status isn't included here — the frontend reads every live
+// games.atmosphere.status record straight from the user's own PDS (one per
+// game currently being played, not a single fixed rkey), which is the
+// authoritative source and is publicly readable, so there's no reason to
+// proxy it through an authenticated session on our side.
 func (h *MeHandler) Get(w http.ResponseWriter, r *http.Request) {
 	did, ok := DIDFromContext(r.Context())
 	if !ok {

@@ -64,3 +64,21 @@ func TestRunStatusSweep_NoStaleEntries_NoDeletes(t *testing.T) {
 		t.Fatalf("got deletes=%+v, want none", writer.deletes)
 	}
 }
+
+func TestRunStatusSweep_ForeignViaRecord_NotDeleted(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	appdb.UpsertUser(ctx, conn, "did:plc:a")
+
+	now := time.Now()
+	writer := &fakeWriter{live: map[string][]StatusEntry{
+		"did:plc:a": {{Rkey: "someone-elses-game", StaleAt: now.Add(-time.Hour), Via: "a-different-instance.example"}},
+	}}
+
+	if err := RunStatusSweep(ctx, conn, writer, now); err != nil {
+		t.Fatalf("RunStatusSweep: %v", err)
+	}
+	if len(writer.deletes) != 0 {
+		t.Fatalf("got deletes=%+v, want none — stale but belongs to a different via", writer.deletes)
+	}
+}

@@ -119,7 +119,9 @@ export async function resolveLiveStatuses(did: string): Promise<LiveStatus[] | '
   }
 
   const now = Date.now()
-  const live = records.filter((r) => new Date(r.value.staleAt).getTime() > now)
+  const live = records
+    .filter((r) => new Date(r.value.staleAt).getTime() > now)
+    .sort((a, b) => new Date(b.value.createdAt).getTime() - new Date(a.value.createdAt).getTime())
   return Promise.all(live.map((r) => toLiveStatus(r.value)))
 }
 

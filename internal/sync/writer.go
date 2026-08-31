@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
@@ -14,6 +15,7 @@ import (
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/atdata"
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
+	"github.com/bluesky-social/indigo/atproto/identity"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
 	"github.com/jphastings/game-status/internal/atsession"
@@ -23,6 +25,7 @@ import (
 type ATProtoWriter struct {
 	Resumer *atsession.Resumer
 	Conn    *sql.DB
+	Dir     identity.Directory
 }
 
 var _ RecordWriter = (*ATProtoWriter)(nil)
@@ -73,41 +76,64 @@ func (w *ATProtoWriter) DeleteStatus(ctx context.Context, did, rkey string) erro
 	})
 }
 
-// statusListLimit is comfortably above how many status records one account
-// could ever have live at once (bounded by enabled source count).
-// ponytail: fixed page, no cursor pagination loop; revisit if that bound changes.
+// statusListLimit is comfortably above any plausible number of live status
+// records for one account — far more than this app's own desired set could
+// ever produce (bounded by enabled source count), with headroom left for
+// another self-hosted instance's records to sit alongside them too. No
+// cursor pagination; anything beyond this page simply wouldn't be diffed or
+// swept.
+// ponytail: fixed page, no pagination loop; revisit if that bound changes.
 const statusListLimit = 100
 
 // ListStatuses reads every games.atmosphere.status record currently live
 // for did straight off their PDS — the source of truth Reconcile diffs
 // against, and RunStatusSweep checks for expiry.
+//
+// Deliberately unauthenticated, like internal/keytrace/keyfetch.go and
+// internal/claims/sweep.go's own reads: com.atproto.repo.listRecords is a
+// public, open-CORS endpoint on the reference PDS implementation (see
+// CLAUDE.md's atproto facts), and this app's OAuth scopes only ever request
+// create/update/delete on this collection, not read — going unauthenticated
+// sidesteps depending on an unconfirmed "action=read" scope entirely, and
+// avoids a session resume on every reconcile.
 func (w *ATProtoWriter) ListStatuses(ctx context.Context, did string) ([]StatusEntry, error) {
+	parsedDID, err := syntax.ParseDID(did)
+	if err != nil {
+		return nil, err
+	}
+	ident, err := w.Dir.LookupDID(ctx, parsedDID)
+	if err != nil {
+		return nil, err
+	}
+	client := atclient.NewAPIClient(ident.PDSEndpoint())
+
+	out, err := agnostic.RepoListRecords(ctx, client, StatusCollection, "", statusListLimit, did, false)
+	if err != nil {
+		return nil, err
+	}
+
 	var entries []StatusEntry
-	err := w.withClient(ctx, did, func(client *atclient.APIClient) error {
-		out, err := agnostic.RepoListRecords(ctx, client, StatusCollection, "", statusListLimit, did, false)
+	for _, rec := range out.Records {
+		_, _, rkey, ok := parseAtURI(rec.Uri)
+		if !ok {
+			continue // malformed uri — not something we can diff against or clean up
+		}
+		var v struct {
+			StaleAt string `json:"staleAt"`
+			Via     string `json:"via"`
+		}
+		if err := json.Unmarshal(*rec.Value, &v); err != nil {
+			slog.Warn("skipping unparseable status record", "uri", rec.Uri, "err", err)
+			continue // one bad record shouldn't block every other status this account has
+		}
+		staleAt, err := time.Parse(time.RFC3339, v.StaleAt)
 		if err != nil {
-			return err
+			slog.Warn("skipping status record with unparseable staleAt", "uri", rec.Uri, "err", err)
+			continue
 		}
-		for _, rec := range out.Records {
-			_, _, rkey, ok := parseAtURI(rec.Uri)
-			if !ok {
-				continue
-			}
-			var v struct {
-				StaleAt string `json:"staleAt"`
-			}
-			if err := json.Unmarshal(*rec.Value, &v); err != nil {
-				return fmt.Errorf("parse status record %s: %w", rec.Uri, err)
-			}
-			staleAt, err := time.Parse(time.RFC3339, v.StaleAt)
-			if err != nil {
-				return fmt.Errorf("parse staleAt for %s: %w", rec.Uri, err)
-			}
-			entries = append(entries, StatusEntry{Rkey: rkey, StaleAt: staleAt})
-		}
-		return nil
-	})
-	return entries, err
+		entries = append(entries, StatusEntry{Rkey: rkey, StaleAt: staleAt, Via: v.Via})
+	}
+	return entries, nil
 }
 
 // isRecordNotFound checks indigo's actual XRPC error type. Confirmed by

@@ -33,10 +33,14 @@ type RecordWriter interface {
 
 // StatusEntry is one games.atmosphere.status record as read back off a PDS —
 // just enough to diff against what should currently be live (Reconcile) or
-// check for expiry (RunStatusSweep).
+// check for expiry (RunStatusSweep). Via lets both of those tell "ours" from
+// a status written by a different self-hosted instance of this same app
+// sharing the collection — empty Via (pre-via records, or the old rkey="self"
+// migration path) is treated as ours too, so cleanup still self-heals.
 type StatusEntry struct {
 	Rkey    string
 	StaleAt time.Time
+	Via     string
 }
 
 // CallBudget guards RunTick's Steam calls against a self-imposed daily

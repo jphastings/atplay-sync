@@ -78,6 +78,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 		return err
 	}
 	for _, entry := range live {
+		if entry.Via != "" && entry.Via != ViaClientName {
+			continue // written by a different client/instance sharing this collection — not ours to delete
+		}
 		if _, ok := desired[entry.Rkey]; !ok {
 			if err := r.Writer.DeleteStatus(ctx, did, entry.Rkey); err != nil {
 				return err

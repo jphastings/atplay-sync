@@ -181,3 +181,41 @@ func TestReconcile_GameSwitch_DeletesOldPutsNew(t *testing.T) {
 		t.Fatalf("got deletes=%+v, want one delete for old-game", writer.deletes)
 	}
 }
+
+func TestReconcile_ForeignViaRecord_NotDeleted(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+
+	writer := &fakeWriter{live: map[string][]StatusEntry{did: {{Rkey: "someone-elses-game", StaleAt: time.Now().Add(time.Hour), Via: "a-different-instance.example"}}}}
+	r := &Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: writer}
+
+	if err := r.Reconcile(ctx, did, time.Now()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(writer.deletes) != 0 {
+		t.Fatalf("got deletes=%+v, want none — this record belongs to a different via, not ours to touch", writer.deletes)
+	}
+}
+
+func TestReconcile_UnresolvableGameURI_Skipped(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{"570": {URI: "not-an-at-uri", Name: "Broken"}}}
+	writer := &fakeWriter{}
+	r := &Reconciler{Conn: conn, Resolver: resolver, Writer: writer}
+
+	if err := r.Reconcile(ctx, did, time.Now()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(writer.puts) != 0 {
+		t.Fatalf("got puts=%+v, want none — a malformed game URI can't be published", writer.puts)
+	}
+}

@@ -28,6 +28,9 @@ func RunStatusSweep(ctx context.Context, conn *sql.DB, writer RecordWriter, now 
 			continue // uncertain outcome (e.g. a network blip) — try again on tomorrow's sweep
 		}
 		for _, entry := range entries {
+			if entry.Via != "" && entry.Via != ViaClientName {
+				continue // written by a different client/instance sharing this collection — not ours to delete
+			}
 			if entry.StaleAt.Before(now) {
 				if err := writer.DeleteStatus(ctx, did, entry.Rkey); err != nil {
 					return err

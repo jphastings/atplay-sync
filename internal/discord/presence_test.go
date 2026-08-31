@@ -86,7 +86,7 @@ func TestPresenceHandler_PlayingResolvableGame_UpdatesSession(t *testing.T) {
 	games := NewGameIndex()
 	games.steamAppID = map[string]string{"356875988589740042": "570"}
 	reconciler := &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{games: map[string]*appdb.CachedGame{
-		"570": {URI: "at://cartridge/dota2", Name: "Dota 2"},
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
 	}}, Writer: &fakeWriter{}}
 	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: games, Reconciler: reconciler}
 

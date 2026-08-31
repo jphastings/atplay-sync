@@ -27,7 +27,7 @@ function resolveSourceOrder(me: Me): Source[] {
   return [...order, ...KNOWN_SOURCES.filter((s) => !order.includes(s))] as Source[]
 }
 
-// `mockMe()`/`mockLiveStatus()` return `undefined` when `?mock=` isn't set
+// `mockMe()`/`mockLiveStatuses()` return `undefined` when `?mock=` isn't set
 // (meaning "no override, hit the real API") — distinct from a fixture that
 // legitimately resolves to `null`, which `||` would otherwise treat as "no
 // override" too and incorrectly fall through.
