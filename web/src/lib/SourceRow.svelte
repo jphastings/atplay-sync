@@ -60,12 +60,15 @@
           type="button"
           class="sync-dot"
           data-status="unknown"
+          style={`anchor-name: --sync-dot-${source}`}
           popovertarget={unknownPopoverId}
           aria-label={`Unrecognized activity reported: ${outcome.gameName || 'unknown'}`}
         ></button>
-        <div id={unknownPopoverId} popover class="sync-popover">{outcome.gameName || 'Unrecognized activity'}</div>
+        <div id={unknownPopoverId} popover class="sync-popover" style={`position-anchor: --sync-dot-${source}`}>{outcome.gameName || 'Unrecognized activity'}</div>
       {:else if outcome}
         <span class="sync-dot" data-status={outcome.status} title={outcome.gameName}></span>
+      {:else if enabled}
+        <span class="sync-dot" data-status="idle" title="Nothing currently reported"></span>
       {/if}
     </span>
     <span class="toggle-label-sub">

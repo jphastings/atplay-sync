@@ -365,7 +365,9 @@ button {
 
 /* What a sync channel is reporting right now — synced (driving the
    published record), duplicate (a valid match superseded by a
-   higher-priority source), or unknown (unmatched; name in a popover). */
+   higher-priority source), unknown (unmatched; name in a popover), or idle
+   (enabled, connected, just nothing playing right now — outline only, so
+   it doesn't compete visually with an actual signal). */
 .sync-dot {
   width: 8px;
   height: 8px;
@@ -374,12 +376,18 @@ button {
   padding: 0;
   border: none;
   cursor: default;
+  margin-left: var(--space-sm); /* on top of .toggle-label-title's own gap, so the dot reads as separate from the label text */
 }
 .sync-dot[data-status="synced"] { background: var(--status-synced); box-shadow: 0 0 6px var(--status-synced); }
 .sync-dot[data-status="duplicate"] { background: var(--status-duplicate); box-shadow: 0 0 6px var(--status-duplicate); }
 .sync-dot[data-status="unknown"] { background: var(--status-unknown); box-shadow: 0 0 6px var(--status-unknown); cursor: pointer; }
+.sync-dot[data-status="idle"] { background: none; border: 1.5px solid var(--text-muted); }
 button.sync-dot:focus-visible { outline: 2px solid var(--status-unknown); outline-offset: 2px; }
 
+/* CSS-anchored to the dot that opened it (anchor-name set inline per row,
+   see SourceRow.svelte) rather than the popover API's default centered
+   placement — position-try-fallbacks flips it above the dot if there's no
+   room below; unsupported browsers just keep the UA default centering. */
 .sync-popover {
   background: var(--bg-raised);
   color: var(--text-primary);
@@ -388,8 +396,10 @@ button.sync-dot:focus-visible { outline: 2px solid var(--status-unknown); outlin
   padding: var(--space-xs) var(--space-sm);
   font-size: var(--text-xs);
   max-width: 16rem;
+  position-area: bottom;
+  position-try-fallbacks: flip-block;
+  margin: var(--space-xs) 0 0;
 }
-.sync-popover:popover-open { margin: auto; } /* center the browser's default anchor-less placement */
 
 /* ---------- Utility row ---------- */
 
