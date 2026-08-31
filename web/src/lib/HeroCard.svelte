@@ -4,6 +4,8 @@
 
   let { status }: { status: LiveStatus } = $props()
 
+  let coverFailed = $state(false)
+
   function timeAgo(iso: string): string {
     const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
     const units: [Intl.RelativeTimeFormatUnit, number][] = [
@@ -18,13 +20,13 @@
 </script>
 
 <section class="hero" aria-live="polite">
-  {#if status.coverURL}
+  {#if status.coverURL && !coverFailed}
     <img
       class="hero-cover"
       src={status.coverURL}
       alt={`${status.title} cover art`}
       loading="lazy"
-      onerror={(e) => (e.currentTarget as HTMLImageElement).remove()}
+      onerror={() => (coverFailed = true)}
     />
   {/if}
   <div class="hero-body">

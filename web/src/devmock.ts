@@ -58,6 +58,15 @@ const FIXTURES: Record<string, { me: Me | null; live: LiveStatus[] | 'error' }> 
       coverURL: 'https://pds.gamesgamesgamesgames.games/xrpc/com.atproto.sync.getBlob?did=did:web:gamesgamesgamesgames.games&cid=bafkreiafbwc3a3y47qnaguvov6rp4dhispbqeyglfxi5q37nb7lse34h7m',
     }],
   },
+  'mixed-enabled': {
+    me: {
+      did: 'did:plc:mockuser',
+      steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
+      discordSubject: '690973862245957683', discordDisplayName: 'byjp', discordEnabled: false,
+      sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
+    },
+    live: [],
+  },
   'multi-game': {
     me: {
       did: 'did:plc:mockuser',

@@ -1,6 +1,7 @@
 /.mlf
 /.superpowers/
 /web/node_modules/
+/web/*.timestamp-*.mjs
 /cmd/server/web/dist/
 /server
 /game-status.db*

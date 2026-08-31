@@ -6,7 +6,15 @@ import { mockMe, mockLiveStatuses } from './devmock'
 export const KNOWN_SOURCES = ['steam', 'discord'] as const
 export type Source = (typeof KNOWN_SOURCES)[number]
 
-export const state = $state<{
+// Named appState, not state: importing a binding literally named `state`
+// into a file that also declares its own local `$state(...)` call causes
+// Svelte 5's compiler to misparse the bare `$state` token as legacy store
+// auto-subscription (`$` + identifier `state`) instead of the rune — a
+// warning, not a build error, that silently generates wrong runtime code.
+// This bit SourcesList.svelte once already; naming the export something
+// that can never collide with the rune keyword removes the hazard for
+// every future file that imports it, not just the one that already hit it.
+export const appState = $state<{
   me: Me | null | undefined
   liveStatuses: LiveStatus[] | 'error' | undefined
   handle: string | undefined
@@ -39,7 +47,7 @@ async function currentLiveStatuses(did: string): Promise<LiveStatus[] | 'error'>
 export async function loadMe(): Promise<void> {
   const me = await currentMe()
   if (!me) {
-    state.me = null
+    appState.me = null
     return
   }
 
@@ -51,23 +59,23 @@ export async function loadMe(): Promise<void> {
   if (rechecks.length) {
     await Promise.all(rechecks).catch(() => { })
     const refreshed = await currentMe()
-    state.me = refreshed ?? me
+    appState.me = refreshed ?? me
     return
   }
-  state.me = me
+  appState.me = me
 }
 
 export async function loadLiveStatuses(): Promise<void> {
-  const me = state.me
+  const me = appState.me
   if (!me) return
-  state.liveStatuses = await currentLiveStatuses(me.did)
+  appState.liveStatuses = await currentLiveStatuses(me.did)
 }
 
 export async function loadHandle(): Promise<void> {
-  const me = state.me
+  const me = appState.me
   if (!me) return
   const handle = await resolveHandle(me.did)
-  if (handle) state.handle = handle // resolution failed — the DID fallback in the template is fine
+  if (handle) appState.handle = handle // resolution failed — the DID fallback in the template is fine
 }
 
 export function resolveSourceOrder(me: Me): Source[] {
@@ -87,7 +95,7 @@ export function isEnabled(me: Me, source: Source): boolean {
 // toggling always re-imposes an enabled-first sort on top of whatever
 // order is currently on screen.
 export async function toggleSource(source: Source, enabled: boolean): Promise<boolean> {
-  const me = state.me
+  const me = appState.me
   if (!me) return false
   try {
     await (source === 'steam' ? setSteamEnabled : setDiscordEnabled)(enabled)
@@ -107,10 +115,15 @@ export async function toggleSource(source: Source, enabled: boolean): Promise<bo
 }
 
 // Persists exactly the order given (a manual drag result) — unlike
-// toggleSource, this does NOT re-impose an enabled-first sort, matching
-// today's beginRowDrag: a manual drag is fully user-controlled.
+// toggleSource, this does NOT re-impose an enabled-first sort: a manual
+// drag is fully user-controlled. Fire-and-forget, like toggleSource's own
+// persist — note this is weaker than the original vanilla-TS beginRowDrag,
+// which awaited the request and re-rendered from a fresh fetch on failure
+// so a rejected persist visibly snapped back; here the UI keeps showing
+// the locally-dragged order until the next reload if the request is
+// rejected.
 export function reorderSources(order: Source[]): void {
-  const me = state.me
+  const me = appState.me
   if (!me) return
   me.sourceOrder = order
   setSourceOrder(order).catch(() => { })

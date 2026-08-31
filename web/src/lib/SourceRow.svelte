@@ -37,7 +37,12 @@
   }
 </script>
 
-<label class="toggle-row" data-connected={connected} data-source={source}>
+<label
+  class="toggle-row"
+  data-connected={connected}
+  data-source={source}
+  onpointerdowncapture={(e) => { if ((e.target as HTMLElement).closest('a, .toggle')) e.stopPropagation() }}
+>
   <span class="toggle-label">
     <span class="toggle-label-title">
       {#if source === 'steam'}

@@ -1,6 +1,6 @@
 <!-- web/src/App.svelte -->
 <script lang="ts">
-  import { state, loadMe, loadLiveStatuses } from './state.svelte'
+  import { appState, loadMe, loadLiveStatuses } from './state.svelte'
   import { watchOwnStatus } from './jetstream'
   import SignIn from './lib/SignIn.svelte'
   import SignedIn from './lib/SignedIn.svelte'
@@ -10,14 +10,14 @@
   })
 
   $effect(() => {
-    if (!state.me) return
+    if (!appState.me) return
     loadLiveStatuses()
-    return watchOwnStatus(state.me.did, () => loadLiveStatuses())
+    return watchOwnStatus(appState.me.did, () => loadLiveStatuses())
   })
 </script>
 
-{#if state.me === null}
+{#if appState.me === null}
   <SignIn />
-{:else if state.me}
+{:else if appState.me}
   <SignedIn />
 {/if}
