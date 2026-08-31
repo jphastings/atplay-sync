@@ -1,11 +1,11 @@
 <!-- SEED — re-run $impeccable document once there's code to capture the actual tokens and components. -->
 
 ---
-name: Game Status Sync
+name: At Play Sync
 description: An arcade-cabinet-drenched control panel for broadcasting your live "now playing" status to atproto.
 ---
 
-# Design System: Game Status Sync
+# Design System: At Play Sync
 
 ## 1. Overview
 

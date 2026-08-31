@@ -7,7 +7,7 @@ const statusRkey = "self"
 // ViaClientName identifies this app in the record's `via` field, per the
 // lexicon's own description: "the (unique) name of the client ... which
 // wrote this record."
-const ViaClientName = "game-status-sync"
+const ViaClientName = "at-play-sync"
 
 type ActorStatus struct {
 	Type string `json:"$type"`

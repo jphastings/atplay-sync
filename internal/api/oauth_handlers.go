@@ -35,7 +35,7 @@ func (h *OAuthHandlers) ClientMetadata(w http.ResponseWriter, r *http.Request) {
 		jwksURI := h.BaseURL + "/oauth/jwks.json"
 		meta.JWKSURI = &jwksURI
 	}
-	name := "Game Status Sync"
+	name := "At Play Sync"
 	meta.ClientName = &name
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(meta)

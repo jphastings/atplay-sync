@@ -72,7 +72,7 @@ function renderSignIn() {
   app.innerHTML = `
     <div class="screen">
       <div class="marquee">
-        <h1 class="marquee-title">GAME<br>STATUS<br>SYNC</h1>
+        <h1 class="marquee-title">AT PLAY<br>SYNC</h1>
         <form class="signin-form" id="signin-form">
           <label class="field-label" for="handle">Your Atmosphere handle</label>
           <input class="text-input" id="handle" name="handle" placeholder="your.handle" autocomplete="username" required />
@@ -134,7 +134,7 @@ function sourceRowHTML(source: Source, me: Me): string {
       : `You must <a href="https://keytrace.dev/add/${source}" target="_blank" rel="noopener noreferrer">link your ${label} account</a> before you can sync it`
 
   return `
-    <label class="toggle-row" draggable="true" data-source="${source}">
+    <label class="toggle-row" draggable="${connected}" data-source="${source}">
       <span class="toggle-label">
         <span class="toggle-label-title">${icon} ${label}</span>
         <span class="toggle-label-sub">${subtitle}</span>
@@ -254,7 +254,7 @@ function verifiedSyncHTML(me: Me): string {
 function verifiedDiscordSyncHTML(me: Me): string {
   const name = escapeHTML(me.discordDisplayName ?? me.discordSubject!)
   const profileURL = `https://discord.com/users/${encodeURIComponent(me.discordSubject!)}`
-  return `Sync now playing data for <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Discord`
+  return `Sync data from <a href="${profileURL}" target="_blank" rel="noopener noreferrer">${name}</a> on Discord`
 }
 
 function timeAgo(iso: string): string {

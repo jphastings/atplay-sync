@@ -1,4 +1,4 @@
-/* Design System: Game Status Sync — "The Neon Cabinet"
+/* Design System: At Play Sync — "The Neon Cabinet"
    See DESIGN.md. One hue (arcade magenta-violet) drenches the surface;
    depth comes from layered lightness, not shadows; "off" states dim the
    same hue rather than reaching for gray. Display face for marquee
@@ -306,6 +306,7 @@ button {
   width: 48px;
   height: 28px;
   flex-shrink: 0;
+  cursor: pointer; /* track/thumb paint over the input, so they need their own cursor, inherited from here */
 }
 
 .toggle input {

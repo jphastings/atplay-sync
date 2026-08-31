@@ -32,7 +32,7 @@ All via environment variables. Required:
 | Variable | What it is |
 | --- | --- |
 | `STEAM_API_KEY` | A [Steam Web API key](https://steamcommunity.com/dev/apikey). See [docs/steam.md](docs/steam.md). |
-| `BASE_URL` | The public HTTPS origin this service is reachable on, e.g. `https://game-status.example.com`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
+| `BASE_URL` | The public HTTPS origin this service is reachable on, e.g. `https://sync.atplay.games`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
 | `OAUTH_PRIVATE_KEY` | A P-256 confidential-client key in multibase form. Generate with [`goat`](https://github.com/bluesky-social/goat): `goat key generate -t P-256`. |
 | `SESSION_SECRET` | 32 random bytes, hex-encoded, for signing session cookies: `openssl rand -hex 32`. |
 | `DISCORD_BOT_TOKEN` | A bot token for the tracking guild's application, with the guild presences and guild members privileged intents enabled. |

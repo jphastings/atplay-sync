@@ -81,10 +81,10 @@ this link to users so they can join and link their account.
 
 You now have all three values:
 
-| Variable | Source |
-| --- | --- |
-| `DISCORD_BOT_TOKEN` | Step 2 |
-| `DISCORD_GUILD_ID` | Step 7 |
+| Variable             | Source |
+| -------------------- | ------ |
+| `DISCORD_BOT_TOKEN`  | Step 2 |
+| `DISCORD_GUILD_ID`   | Step 7 |
 | `DISCORD_INVITE_URL` | Step 8 |
 
 Set them as environment variables for the service.

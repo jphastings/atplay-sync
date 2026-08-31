@@ -18,7 +18,7 @@ func TestFrontendServedFromDistRoot(t *testing.T) {
 	http.FileServerFS(distFS).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "<title>Game Status Sync</title>") {
+	if !strings.Contains(body, "<title>At Play Sync</title>") {
 		t.Fatalf("expected built index.html content, got directory listing or empty response:\n%s", body)
 	}
 }
