@@ -31,7 +31,7 @@ All via environment variables. Required:
 
 | Variable | What it is |
 | --- | --- |
-| `STEAM_API_KEY` | A [Steam Web API key](https://steamcommunity.com/dev/apikey). |
+| `STEAM_API_KEY` | A [Steam Web API key](https://steamcommunity.com/dev/apikey). See [docs/steam.md](docs/steam.md). |
 | `BASE_URL` | The public HTTPS origin this service is reachable on, e.g. `https://game-status.example.com`. The OAuth client metadata, callback and JWKS URLs are derived from it. |
 | `OAUTH_PRIVATE_KEY` | A P-256 confidential-client key in multibase form. Generate with [`goat`](https://github.com/bluesky-social/goat): `goat key generate -t P-256`. |
 | `SESSION_SECRET` | 32 random bytes, hex-encoded, for signing session cookies: `openssl rand -hex 32`. |
@@ -58,6 +58,7 @@ members of a guild the bot is in — there's no polling API like Steam's. The
 tracking guild this points at exists purely to satisfy that scoping rule:
 `@everyone` has no channel visibility, so there's nothing to browse or read,
 and onboarding happens by DM on join rather than in a shared channel. See
+[docs/discord.md](docs/discord.md) for how to set one up, and
 [the design doc](docs/superpowers/specs/2026-08-30-discord-game-status-sync-design.md)
 for the full privacy rationale and how a claim's signed Discord username
 resolves to the guild member it belongs to.
