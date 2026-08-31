@@ -7,8 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bluesky-social/indigo/atproto/auth/oauth"
-
+	"github.com/jphastings/game-status/internal/atsession"
 	"github.com/jphastings/game-status/internal/claims"
 	"github.com/jphastings/game-status/internal/db"
 	"github.com/jphastings/game-status/internal/jetstream"
@@ -16,7 +15,7 @@ import (
 )
 
 type SteamHandlers struct {
-	App        *oauth.ClientApp
+	Resumer    *atsession.Resumer
 	Conn       *sql.DB
 	Verifier   *keytrace.Verifier
 	Resolver   claims.SubjectResolver
@@ -30,7 +29,7 @@ func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not signed in", http.StatusUnauthorized)
 		return
 	}
-	if err := discoverFor(r.Context(), h.App, h.Conn, h.Verifier, h.Resolver, h.Reconciler, did); err != nil {
+	if err := discoverFor(r.Context(), h.Resumer, h.Conn, h.Verifier, h.Resolver, h.Reconciler, did); err != nil {
 		http.Error(w, "recheck failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}

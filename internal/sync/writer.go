@@ -8,47 +8,42 @@ import (
 	"errors"
 	"fmt"
 
-	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/agnostic"
+	comatproto "github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/atdata"
 	"github.com/bluesky-social/indigo/atproto/auth/oauth"
 	"github.com/bluesky-social/indigo/atproto/syntax"
 
+	"github.com/jphastings/game-status/internal/atsession"
 	appdb "github.com/jphastings/game-status/internal/db"
 )
 
 type ATProtoWriter struct {
-	App  *oauth.ClientApp
-	Conn *sql.DB
+	Resumer *atsession.Resumer
+	Conn    *sql.DB
 }
 
 var _ RecordWriter = (*ATProtoWriter)(nil)
 
-func (w *ATProtoWriter) client(ctx context.Context, did string) (*atclient.APIClient, error) {
+func (w *ATProtoWriter) withClient(ctx context.Context, did string, fn func(*atclient.APIClient) error) error {
 	user, err := appdb.GetUser(ctx, w.Conn, did)
-	if err != nil {
-		return nil, err
-	}
-	if user == nil || user.ActiveSessionID == "" {
-		return nil, fmt.Errorf("no active session for %s", did)
-	}
-	parsedDID, err := syntax.ParseDID(did)
-	if err != nil {
-		return nil, err
-	}
-	sess, err := w.App.ResumeSession(ctx, parsedDID, user.ActiveSessionID)
-	if err != nil {
-		return nil, err
-	}
-	return sess.APIClient(), nil
-}
-
-func (w *ATProtoWriter) PutStatus(ctx context.Context, did string, status ActorStatus) error {
-	client, err := w.client(ctx, did)
 	if err != nil {
 		return err
 	}
+	if user == nil || user.ActiveSessionID == "" {
+		return fmt.Errorf("no active session for %s", did)
+	}
+	parsedDID, err := syntax.ParseDID(did)
+	if err != nil {
+		return err
+	}
+	return w.Resumer.WithSession(ctx, parsedDID, user.ActiveSessionID, func(sess *oauth.ClientSession) error {
+		return fn(sess.APIClient())
+	})
+}
+
+func (w *ATProtoWriter) PutStatus(ctx context.Context, did string, status ActorStatus) error {
 	raw, err := json.Marshal(status)
 	if err != nil {
 		return err
@@ -57,24 +52,24 @@ func (w *ATProtoWriter) PutStatus(ctx context.Context, did string, status ActorS
 	if err != nil {
 		return fmt.Errorf("validate status record: %w", err)
 	}
-	_, err = agnostic.RepoPutRecord(ctx, client, &agnostic.RepoPutRecord_Input{
-		Collection: StatusCollection, Repo: did, Rkey: statusRkey, Record: record,
+	return w.withClient(ctx, did, func(client *atclient.APIClient) error {
+		_, err := agnostic.RepoPutRecord(ctx, client, &agnostic.RepoPutRecord_Input{
+			Collection: StatusCollection, Repo: did, Rkey: statusRkey, Record: record,
+		})
+		return err
 	})
-	return err
 }
 
 func (w *ATProtoWriter) DeleteStatus(ctx context.Context, did string) error {
-	client, err := w.client(ctx, did)
-	if err != nil {
+	return w.withClient(ctx, did, func(client *atclient.APIClient) error {
+		_, err := comatproto.RepoDeleteRecord(ctx, client, &comatproto.RepoDeleteRecord_Input{
+			Collection: StatusCollection, Repo: did, Rkey: statusRkey,
+		})
+		if err != nil && isRecordNotFound(err) {
+			return nil // idempotent — deleting an already-gone record is success (Global Constraints)
+		}
 		return err
-	}
-	_, err = comatproto.RepoDeleteRecord(ctx, client, &comatproto.RepoDeleteRecord_Input{
-		Collection: StatusCollection, Repo: did, Rkey: statusRkey,
 	})
-	if err != nil && isRecordNotFound(err) {
-		return nil // idempotent — deleting an already-gone record is success (Global Constraints)
-	}
-	return err
 }
 
 // isRecordNotFound checks indigo's actual XRPC error type. Confirmed by

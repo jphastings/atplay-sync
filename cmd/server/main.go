@@ -16,6 +16,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 
 	"github.com/jphastings/game-status/internal/api"
+	"github.com/jphastings/game-status/internal/atsession"
 	"github.com/jphastings/game-status/internal/authstore"
 	"github.com/jphastings/game-status/internal/cartridge"
 	"github.com/jphastings/game-status/internal/claims"
@@ -72,6 +73,7 @@ func main() {
 	}
 	store := &authstore.SQLiteStore{Conn: conn}
 	oauthApp := oauth.NewClientApp(&oauthConfig, store)
+	resumer := atsession.NewResumer(oauthApp)
 
 	oauthHandlers := &api.OAuthHandlers{App: oauthApp, Conn: conn, Cookies: webauth.SignedCookies{Secret: cfg.SessionSecret}, BaseURL: cfg.BaseURL}
 
@@ -114,7 +116,7 @@ func main() {
 		}
 	}()
 
-	writer := &sync.ATProtoWriter{App: oauthApp, Conn: conn}
+	writer := &sync.ATProtoWriter{Resumer: resumer, Conn: conn}
 	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer}
 
 	presenceHandler := &discord.PresenceHandler{Conn: conn, GuildID: cfg.DiscordGuildID, Games: gameIndex, Reconciler: reconciler}
@@ -139,7 +141,7 @@ func main() {
 	}
 	defer discordGateway.Close()
 
-	steamHandlers := &api.SteamHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Resolver: discordResolver, Reconciler: reconciler}
+	steamHandlers := &api.SteamHandlers{Resumer: resumer, Conn: conn, Verifier: verifier, Resolver: discordResolver, Reconciler: reconciler}
 	mux.HandleFunc("POST /api/steam/recheck", oauthHandlers.RequireAuth(steamHandlers.Recheck))
 	mux.HandleFunc("POST /api/steam/enabled", oauthHandlers.RequireAuth(steamHandlers.SetEnabled))
 
@@ -194,7 +196,7 @@ func main() {
 	steamHandlers.Jetstream = jetManager
 	oauthHandlers.Jetstream = jetManager
 
-	discordHandlers := &api.DiscordHandlers{App: oauthApp, Conn: conn, Verifier: verifier, Resolver: discordResolver, Reconciler: reconciler, Jetstream: jetManager}
+	discordHandlers := &api.DiscordHandlers{Resumer: resumer, Conn: conn, Verifier: verifier, Resolver: discordResolver, Reconciler: reconciler, Jetstream: jetManager}
 	mux.HandleFunc("POST /api/discord/recheck", oauthHandlers.RequireAuth(discordHandlers.Recheck))
 	mux.HandleFunc("POST /api/discord/enabled", oauthHandlers.RequireAuth(discordHandlers.SetEnabled))
 
