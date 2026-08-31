@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -400,6 +401,62 @@ func TestUpdateSession_Playing_PersistsRawName(t *testing.T) {
 	}
 	if row == nil || row.RawName != "Dota 2" {
 		t.Fatalf("got %+v, want RawName Dota 2", row)
+	}
+}
+
+// concurrencyTrackingWriter wraps fakeWriter's bookkeeping with a
+// deliberately-widened critical section in ListStatuses (every Reconcile
+// call passes through it unconditionally, regardless of whether the did has
+// any session) — used to prove Reconcile calls for the same Reconciler
+// never actually overlap once serialized.
+type concurrencyTrackingWriter struct {
+	fakeWriter
+	mu        sync.Mutex
+	active    int
+	maxActive int
+}
+
+func (w *concurrencyTrackingWriter) ListStatuses(ctx context.Context, did string) ([]StatusEntry, error) {
+	w.mu.Lock()
+	w.active++
+	if w.active > w.maxActive {
+		w.maxActive = w.active
+	}
+	w.mu.Unlock()
+
+	time.Sleep(20 * time.Millisecond) // wide enough that any real overlap reliably shows up
+
+	w.mu.Lock()
+	w.active--
+	w.mu.Unlock()
+
+	return w.fakeWriter.ListStatuses(ctx, did)
+}
+
+func TestReconcile_SerializedAcrossConcurrentCallsForSameDID(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+
+	writer := &concurrencyTrackingWriter{}
+	r := &Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: writer}
+
+	var wg sync.WaitGroup
+	for range 5 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := r.Reconcile(ctx, did, time.Now()); err != nil {
+				t.Errorf("Reconcile: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if writer.maxActive > 1 {
+		t.Fatalf("got max concurrent Reconcile executions = %d, want 1 (not serialized)", writer.maxActive)
 	}
 }
 

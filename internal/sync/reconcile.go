@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
 
 	appdb "github.com/jphastings/game-status/internal/db"
@@ -22,6 +23,19 @@ type Reconciler struct {
 	// unset), and Publish on a did with no subscribers is expected to be a
 	// cheap no-op.
 	Broadcaster Broadcaster
+	// mu serializes Reconcile end-to-end (read session_starts, compute,
+	// publish, diff/write the PDS) across every caller — Steam's tick and
+	// Discord's presence handler run on independent goroutines and can
+	// both reconcile the same did around the same moment. Without this,
+	// two concurrent calls race with no guarantee the one with fresher
+	// data finishes (and publishes) last, so a stale snapshot can
+	// overwrite a fresh one both on the live-push socket and in what gets
+	// written to the PDS.
+	// ponytail: one global lock, not per-did — simplest correct fix at
+	// this app's scale. It fully serializes reconciles across every user,
+	// including their PDS network calls; switch to a per-did lock if that
+	// throughput ever matters.
+	mu sync.Mutex
 }
 
 var _ appdb.Reconciler = (*Reconciler)(nil)
@@ -143,6 +157,9 @@ func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, di
 // enable/disable, after a priority reorder, and after a claim
 // invalidation — nothing else should call Writer.PutStatus/DeleteStatus.
 func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	desired, outcomes, err := ComputeDesired(ctx, r.Conn, r.Resolver, did, now)
 	if err != nil {
 		return err
