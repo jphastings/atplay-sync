@@ -1,0 +1,7 @@
+.git
+.env
+/game-status.db*
+/server
+/web/node_modules
+/cmd/server/web/dist
+/.claude
