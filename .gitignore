@@ -1,4 +1,5 @@
 /.mlf
+/.superpowers/
 /web/node_modules/
 /cmd/server/web/dist/
 /server
