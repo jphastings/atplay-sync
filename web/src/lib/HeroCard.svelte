@@ -33,5 +33,8 @@
     <p class="hero-eyebrow"><span class="live-dot"></span> Live</p>
     <h2 class="hero-title">{status.title}</h2>
     <p class="hero-meta">since {timeAgo(status.createdAt)}</p>
+    {#if status.via && status.via !== location.hostname}
+      <p class="hero-via">{status.via}</p>
+    {/if}
   </div>
 </section>

@@ -86,6 +86,7 @@ interface StatusRecord {
   embed?: { external: { uri: string; title: string; description: string } }
   createdAt: string
   staleAt: string
+  via?: string
 }
 
 interface GameRecord {
@@ -100,6 +101,7 @@ export interface LiveStatus {
   createdAt: string
   staleAt: string
   coverURL?: string
+  via?: string
 }
 
 /** Reads every live (non-stale) status the signed-in user has published across all their sources, resolving cover art from each linked game record. Returns 'error' if their PDS couldn't be reached. */
@@ -126,13 +128,14 @@ export async function resolveLiveStatuses(did: string): Promise<LiveStatus[] | '
 }
 
 async function toLiveStatus(value: StatusRecord): Promise<LiveStatus> {
-  const { game, embed, createdAt, staleAt } = value
+  const { game, embed, createdAt, staleAt, via } = value
   const base: LiveStatus = {
     title: embed?.external.title ?? game,
     description: embed?.external.description ?? '',
     pageURL: embed?.external.uri ?? game,
     createdAt,
     staleAt,
+    via,
   }
 
   try {
