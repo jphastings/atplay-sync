@@ -199,6 +199,12 @@ button {
 
 /* ---------- Status hero ---------- */
 
+.hero-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
 .hero {
   background: var(--bg-raised);
   border-radius: 10px;

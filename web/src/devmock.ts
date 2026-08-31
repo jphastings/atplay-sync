@@ -5,35 +5,35 @@
 import type { Me } from './api'
 import type { LiveStatus } from './atproto'
 
-const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error' }> = {
-  'signed-out': { me: null, live: null },
+const FIXTURES: Record<string, { me: Me | null; live: LiveStatus[] | 'error' }> = {
+  'signed-out': { me: null, live: [] },
   'no-claim': {
     me: {
       did: 'did:plc:mockuser', steamEnabled: false, discordEnabled: false, sourceOrder: ['steam', 'discord'],
       discordInviteUrl: 'https://discord.gg/example',
     },
-    live: null,
+    live: [],
   },
   idle: {
     me: {
       did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
       discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
     },
-    live: null,
+    live: [],
   },
   playing: {
     me: {
       did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
       discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
     },
-    live: {
+    live: [{
       title: 'Slay the Spire II',
       description: 'The iconic roguelike deckbuilder returns!',
       pageURL: 'https://cartridge.dev/game/slay-the-spire-ii',
       createdAt: new Date(Date.now() - 47 * 60 * 1000).toISOString(),
       staleAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       coverURL: 'https://pds.gamesgamesgamesgames.games/xrpc/com.atproto.sync.getBlob?did=did:web:gamesgamesgamesgames.games&cid=bafkreiafbwc3a3y47qnaguvov6rp4dhispbqeyglfxi5q37nb7lse34h7m',
-    },
+    }],
   },
   error: {
     me: {
@@ -49,14 +49,39 @@ const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error
       discordSubject: '690973862245957683', discordDisplayName: 'byjp', discordEnabled: true,
       sourceOrder: ['discord', 'steam'], discordInviteUrl: 'https://discord.gg/example',
     },
-    live: {
+    live: [{
       title: 'Slay the Spire II',
       description: 'The iconic roguelike deckbuilder returns!',
       pageURL: 'https://cartridge.dev/game/slay-the-spire-ii',
       createdAt: new Date(Date.now() - 47 * 60 * 1000).toISOString(),
       staleAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       coverURL: 'https://pds.gamesgamesgamesgames.games/xrpc/com.atproto.sync.getBlob?did=did:web:gamesgamesgamesgames.games&cid=bafkreiafbwc3a3y47qnaguvov6rp4dhispbqeyglfxi5q37nb7lse34h7m',
+    }],
+  },
+  'multi-game': {
+    me: {
+      did: 'did:plc:mockuser',
+      steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
+      discordSubject: '690973862245957683', discordDisplayName: 'byjp', discordEnabled: true,
+      sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
     },
+    live: [
+      {
+        title: 'Slay the Spire II',
+        description: 'The iconic roguelike deckbuilder returns!',
+        pageURL: 'https://cartridge.dev/game/slay-the-spire-ii',
+        createdAt: new Date(Date.now() - 47 * 60 * 1000).toISOString(),
+        staleAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        coverURL: 'https://pds.gamesgamesgamesgames.games/xrpc/com.atproto.sync.getBlob?did=did:web:gamesgamesgamesgames.games&cid=bafkreiafbwc3a3y47qnaguvov6rp4dhispbqeyglfxi5q37nb7lse34h7m',
+      },
+      {
+        title: 'Dota 2',
+        description: 'A game of unmatched depth and strategic complexity.',
+        pageURL: 'https://cartridge.dev/game/dota-2',
+        createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+        staleAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      },
+    ],
   },
 }
 
@@ -70,8 +95,8 @@ export function mockMe(): Me | null | undefined {
   return FIXTURES[k]?.me ?? null
 }
 
-export function mockLiveStatus(): LiveStatus | null | 'error' | undefined {
+export function mockLiveStatuses(): LiveStatus[] | 'error' | undefined {
   const k = key()
   if (!k) return undefined
-  return FIXTURES[k]?.live ?? null
+  return FIXTURES[k]?.live ?? []
 }

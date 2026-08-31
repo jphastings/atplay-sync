@@ -1,7 +1,7 @@
 import { getMe, recheckClaim, setSteamEnabled, recheckDiscordClaim, setDiscordEnabled, setSourceOrder, type Me } from './api'
-import { resolveLiveStatus, resolveHandle, type LiveStatus } from './atproto'
+import { resolveLiveStatuses, resolveHandle, type LiveStatus } from './atproto'
 import { watchOwnStatus } from './jetstream'
-import { mockMe, mockLiveStatus } from './devmock'
+import { mockMe, mockLiveStatuses } from './devmock'
 
 const app = document.getElementById('app')!
 
@@ -39,12 +39,12 @@ async function currentMe(): Promise<Me | null> {
   return getMe()
 }
 
-async function currentLiveStatus(did: string): Promise<LiveStatus | null | 'error'> {
+async function currentLiveStatuses(did: string): Promise<LiveStatus[] | 'error'> {
   if (import.meta.env.DEV) {
-    const mocked = mockLiveStatus()
+    const mocked = mockLiveStatuses()
     if (mocked !== undefined) return mocked
   }
-  return resolveLiveStatus(did)
+  return resolveLiveStatuses(did)
 }
 
 async function render() {
@@ -92,12 +92,14 @@ function renderSignIn() {
 function renderSignedIn(me: Me) {
   app.innerHTML = `
     <div class="panel-screen"><div class="panel">
-      <section class="hero hero--loading" id="hero" aria-live="polite">
-        <div class="hero-cover hero-cover--loading"></div>
-        <div class="hero-body">
-          <p class="hero-eyebrow"><span class="live-dot"></span> Checking your PDS…</p>
-        </div>
-      </section>
+      <div class="hero-list" id="hero-list">
+        <section class="hero hero--loading" aria-live="polite">
+          <div class="hero-cover hero-cover--loading"></div>
+          <div class="hero-body">
+            <p class="hero-eyebrow"><span class="live-dot"></span> Checking your PDS…</p>
+          </div>
+        </section>
+      </div>
 
       <section class="consent-zone"><div id="sources">${sourcesHTML(me)}</div></section>
 
@@ -285,10 +287,10 @@ function beginRowDrag(sources: HTMLElement, row: HTMLElement, downEvent: Pointer
 }
 
 async function loadLiveStatus(did: string) {
-  const hero = document.getElementById('hero')
-  if (!hero) return // user navigated away from the signed-in screen since this was kicked off
-  const status = await currentLiveStatus(did)
-  hero.outerHTML = renderHero(status)
+  const list = document.getElementById('hero-list')
+  if (!list) return // user navigated away from the signed-in screen since this was kicked off
+  const statuses = await currentLiveStatuses(did)
+  list.outerHTML = renderHeroList(statuses)
 }
 
 async function loadHandle(did: string) {
@@ -298,25 +300,31 @@ async function loadHandle(did: string) {
   tag.textContent = `@${handle}`
 }
 
-function renderHero(status: LiveStatus | null | 'error'): string {
-  if (status === 'error') {
-    return `<section class="hero hero--error" id="hero" aria-live="polite">Couldn't reach your PDS to check status.</section>`
+function renderHeroList(statuses: LiveStatus[] | 'error'): string {
+  if (statuses === 'error') {
+    return `<div class="hero-list" id="hero-list"><section class="hero hero--error" aria-live="polite">Couldn't reach your PDS to check status.</section></div>`
   }
-  if (status === null) {
+  if (statuses.length === 0) {
     return `
-      <section class="hero hero--empty" id="hero" aria-live="polite">
-        <div class="hero-body">
-          <p class="hero-eyebrow"><span class="live-dot"></span> Idle</p>
-          <p class="hero-meta">Not currently playing a game.</p>
-        </div>
-      </section>
+      <div class="hero-list" id="hero-list">
+        <section class="hero hero--empty" aria-live="polite">
+          <div class="hero-body">
+            <p class="hero-eyebrow"><span class="live-dot"></span> Idle</p>
+            <p class="hero-meta">Not currently playing a game.</p>
+          </div>
+        </section>
+      </div>
     `
   }
+  return `<div class="hero-list" id="hero-list">${statuses.map(renderHero).join('')}</div>`
+}
+
+function renderHero(status: LiveStatus): string {
   const cover = status.coverURL
     ? `<img class="hero-cover" src="${status.coverURL}" alt="${escapeHTML(status.title)} cover art" loading="lazy" onerror="this.remove()" />`
     : ''
   return `
-    <section class="hero" id="hero" aria-live="polite">
+    <section class="hero" aria-live="polite">
       ${cover}
       <div class="hero-body">
         <p class="hero-eyebrow"><span class="live-dot"></span> Live</p>
