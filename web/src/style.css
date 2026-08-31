@@ -273,6 +273,12 @@ button {
   animation: arrive var(--dur-arrival) var(--ease-out-quart) 120ms both;
 }
 
+#sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
 .toggle-row {
   display: flex;
   align-items: center;
@@ -285,8 +291,15 @@ button {
 .toggle-label { flex: 1; font-size: var(--text-sm); }
 .toggle-label-title { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--text-primary); margin-bottom: 2px; }
 
-.steam-icon { width: 1em; height: 1em; flex-shrink: 0; }
+.steam-icon, .discord-icon { width: 1em; height: 1em; flex-shrink: 0; }
 .toggle-label-sub { display: block; color: var(--text-muted); font-size: var(--text-xs); }
+
+.toggle-row[draggable="true"] {
+  cursor: grab;
+  transition: background var(--dur-micro) var(--ease-out-quart);
+}
+.toggle-row[draggable="true"]:hover { background: var(--bg-raised); }
+.toggle-row[draggable="true"]:active { cursor: grabbing; }
 
 .toggle {
   position: relative;

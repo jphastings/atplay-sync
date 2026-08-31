@@ -26,9 +26,32 @@ const realClaimJSON = `{
 	"createdAt":"2026-05-03T07:53:39.698Z","lastVerifiedAt":"2026-05-03T07:53:39.698Z"
 }`
 
+// discordKeyJWK is a locally-generated key distinct from realKeyJWK: keytrace
+// rotates its signing key over time (see the differing
+// dev.keytrace.serverPublicKey record dates below), so realDiscordClaimJSON's
+// attestation is signed against this key rather than reusing realKeyJWK.
+const discordKeyJWK = `{"kty":"EC","x":"Z8eoOjebqMWHP4OICJhYnjjRYRNoriWpFNlst3gpGis","y":"J_LLT8Rn9DOSMJE2e3aN1Gnu7k313j3GUC1hqrWcBmY","crv":"P-256"}`
+const discordSignerKeyURI = "at://did:plc:hcwfdlmprcc335oixyfsw7u3/dev.keytrace.serverPublicKey/2026-08-30"
+const realDiscordClaimJSON = `{
+	"type":"discord","status":"verified",
+	"claimUri":"https://discord.gg/EvTSZhkk4P",
+	"identity":{"subject":"jphastings","profileUrl":"https://discord.com/users/690973862245957683","displayName":"byjp"},
+	"sigs":[{
+		"kid":"attest:discord",
+		"src":"at://did:plc:hcwfdlmprcc335oixyfsw7u3/dev.keytrace.serverPublicKey/2026-08-30",
+		"signedAt":"2026-08-30T16:41:52.267Z",
+		"attestation":"eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJjbGFpbVVyaSI6Imh0dHBzOi8vZGlzY29yZC5nZy9FdlRTWmhrazRQIiwiZGlkIjoiZGlkOnBsYzplcGhrenBpbmhhcWNhYnRrdWd0Ynpyd3UiLCJpZGVudGl0eS5zdWJqZWN0IjoianBoYXN0aW5ncyIsInR5cGUiOiJkaXNjb3JkIn0.gm6DazZt2pwrDcVM0XTeUvtAUCxU8ljEI7glhs_VXYtp1gRhnIdMJvktWfeixLLH4VT3QR1Rqc7MBCFZ_hGe5A",
+		"signedFields":["claimUri","did","identity.subject","type"]
+	}],
+	"createdAt":"2026-08-30T16:41:52.320Z","lastVerifiedAt":"2026-08-30T16:41:52.320Z"
+}`
+
 type fakeKeyFetcher struct{}
 
 func (fakeKeyFetcher) FetchPublicJWK(ctx context.Context, keyURI string) (string, error) {
+	if keyURI == discordSignerKeyURI {
+		return discordKeyJWK, nil
+	}
 	return realKeyJWK, nil
 }
 
@@ -36,48 +59,97 @@ func testVerifier() *keytrace.Verifier {
 	return &keytrace.Verifier{Keys: fakeKeyFetcher{}, TrustedDIDs: map[string]bool{realSignerDID: true}}
 }
 
-type fakeStore struct {
-	claim       *appdb.SteamClaim
-	upserts     []appdb.SteamClaim
-	invalidated bool
+type fakeSubjectResolver struct {
+	resolved  map[string]string // claimUri -> resolved snowflake
+	confirmed map[string]bool   // currentSubject -> still confirms; nil map = always true
 }
 
-func (f *fakeStore) GetSteamClaim(ctx context.Context, did string) (*appdb.SteamClaim, error) {
-	return f.claim, nil
+func (f fakeSubjectResolver) ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (string, bool) {
+	id, ok := f.resolved[claim.ClaimURI]
+	return id, ok
 }
-func (f *fakeStore) UpsertSteamClaim(ctx context.Context, c appdb.SteamClaim) error {
+
+func (f fakeSubjectResolver) ConfirmDiscordSubject(ctx context.Context, claim keytrace.Claim, currentSubject string) bool {
+	if f.confirmed == nil {
+		return true
+	}
+	return f.confirmed[currentSubject]
+}
+
+// resolveDiscordSubjectPanics wraps fakeSubjectResolver but panics if
+// ResolveDiscordSubject is ever called — used to prove the fix's core
+// security property: once a claim row exists, full resolution (which could
+// land on a different snowflake than the one already stored) must never
+// run again, only confirmation of the existing one.
+type resolveDiscordSubjectPanics struct{ fakeSubjectResolver }
+
+func (resolveDiscordSubjectPanics) ResolveDiscordSubject(ctx context.Context, did string, claim keytrace.Claim) (string, bool) {
+	panic("ResolveDiscordSubject must not be called when a Discord claim row already exists")
+}
+
+type fakeStore struct {
+	claims          map[string]*appdb.Claim // keyed by claim type
+	upserts         []appdb.Claim
+	invalidatedType []string
+}
+
+func (f *fakeStore) GetClaim(ctx context.Context, did, claimType string) (*appdb.Claim, error) {
+	return f.claims[claimType], nil
+}
+func (f *fakeStore) UpsertClaim(ctx context.Context, c appdb.Claim) error {
 	f.upserts = append(f.upserts, c)
 	return nil
 }
 
 // InvalidateClaim stands for the whole cleanup — claim row, session_starts
 // and the PDS status record — which DBStore delegates to db.InvalidateClaim.
-func (f *fakeStore) InvalidateClaim(ctx context.Context, did string) error {
-	f.invalidated = true
+func (f *fakeStore) InvalidateClaim(ctx context.Context, did, claimType string) error {
+	f.invalidatedType = append(f.invalidatedType, claimType)
 	return nil
 }
 
 func TestHandleEvent_DeleteMatchingTrackedRecord_Invalidates(t *testing.T) {
-	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:a", RecordURI: "at://did:plc:a/dev.keytrace.claim/abc"}}
+	store := &fakeStore{claims: map[string]*appdb.Claim{
+		appdb.SteamSource: {DID: "did:plc:a", Type: appdb.SteamSource, RecordURI: "at://did:plc:a/dev.keytrace.claim/abc"},
+	}}
 
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "abc", Operation: OpDelete}
-	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if !store.invalidated {
-		t.Fatal("expected the tracked claim to be invalidated")
+	if len(store.invalidatedType) != 1 || store.invalidatedType[0] != appdb.SteamSource {
+		t.Fatalf("invalidatedType = %v, want [steam]", store.invalidatedType)
 	}
 }
 
 func TestHandleEvent_DeleteOfUnrelatedRecord_NoOp(t *testing.T) {
-	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:a", RecordURI: "at://did:plc:a/dev.keytrace.claim/current"}}
+	store := &fakeStore{claims: map[string]*appdb.Claim{
+		appdb.SteamSource: {DID: "did:plc:a", Type: appdb.SteamSource, RecordURI: "at://did:plc:a/dev.keytrace.claim/current"},
+	}}
 
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "some-old-rkey", Operation: OpDelete}
-	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if store.invalidated {
-		t.Fatal("expected no invalidation — this rkey isn't the tracked claim")
+	if len(store.invalidatedType) != 0 {
+		t.Fatalf("invalidatedType = %v, want none — this rkey isn't the tracked claim", store.invalidatedType)
+	}
+}
+
+// A delete's AT-URI carries no type — HandleEvent must check every supported
+// type's tracked claim, and invalidate only the one that actually matches.
+func TestHandleEvent_DeleteMatchingTrackedDiscordRecord_InvalidatesOnlyDiscord(t *testing.T) {
+	store := &fakeStore{claims: map[string]*appdb.Claim{
+		appdb.SteamSource:   {DID: "did:plc:a", Type: appdb.SteamSource, RecordURI: "at://did:plc:a/dev.keytrace.claim/steam-rkey"},
+		appdb.DiscordSource: {DID: "did:plc:a", Type: appdb.DiscordSource, RecordURI: "at://did:plc:a/dev.keytrace.claim/discord-rkey"},
+	}}
+
+	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "discord-rkey", Operation: OpDelete}
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(store.invalidatedType) != 1 || store.invalidatedType[0] != appdb.DiscordSource {
+		t.Fatalf("invalidatedType = %v, want [discord] only, steam claim must be left alone", store.invalidatedType)
 	}
 }
 
@@ -85,11 +157,62 @@ func TestHandleEvent_CreateVerifiedRealClaim_Upserts(t *testing.T) {
 	store := &fakeStore{}
 
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpCreate, Record: []byte(realClaimJSON)}
-	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 	if len(store.upserts) != 1 || store.upserts[0].Subject != "76561197994000231" {
 		t.Fatalf("got upserts=%+v", store.upserts)
+	}
+}
+
+func TestHandleEvent_CreateVerifiedDiscordClaim_ResolvesAndUpserts(t *testing.T) {
+	store := &fakeStore{}
+	resolver := fakeSubjectResolver{resolved: map[string]string{"https://discord.gg/EvTSZhkk4P": "690973862245957683"}}
+
+	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "discord-rkey", Operation: OpCreate, Record: []byte(realDiscordClaimJSON)}
+	if err := HandleEvent(context.Background(), store, testVerifier(), resolver, ev); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(store.upserts) != 1 || store.upserts[0].Subject != "690973862245957683" {
+		t.Fatalf("got upserts=%+v, want the resolved snowflake as subject (never the raw username)", store.upserts)
+	}
+}
+
+func TestHandleEvent_DiscordVerifiedButUnresolved_NoUpsert(t *testing.T) {
+	store := &fakeStore{}
+	resolver := fakeSubjectResolver{resolved: map[string]string{}} // hasn't joined the tracking server yet
+
+	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "discord-rkey", Operation: OpCreate, Record: []byte(realDiscordClaimJSON)}
+	if err := HandleEvent(context.Background(), store, testVerifier(), resolver, ev); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(store.upserts) != 0 || len(store.invalidatedType) != 0 {
+		t.Fatalf("got upserts=%+v invalidatedType=%v, want neither — unresolved isn't the same as invalid", store.upserts, store.invalidatedType)
+	}
+}
+
+// The username reuse hijack: an update event re-verifies an already-tracked
+// Discord claim whose signed username has since been reclaimed by someone
+// else. It must be invalidated, never re-pointed at that new person's
+// snowflake — proven by a resolver that panics if full resolution is ever
+// attempted on an already-tracked claim.
+func TestHandleEvent_UpdateToAlreadyTrackedDiscordClaim_NoLongerConfirms_Invalidates(t *testing.T) {
+	did := "did:plc:ephkzpinhaqcabtkugtbzrwu"
+	atURI := "at://" + did + "/dev.keytrace.claim/discord-rkey"
+	store := &fakeStore{claims: map[string]*appdb.Claim{
+		appdb.DiscordSource: {DID: did, Type: appdb.DiscordSource, Subject: "690973862245957683", RecordURI: atURI},
+	}}
+	resolver := resolveDiscordSubjectPanics{fakeSubjectResolver{confirmed: map[string]bool{"690973862245957683": false}}}
+
+	ev := Event{DID: did, Collection: keytrace.ClaimCollection, Rkey: "discord-rkey", Operation: OpUpdate, Record: []byte(realDiscordClaimJSON)}
+	if err := HandleEvent(context.Background(), store, testVerifier(), resolver, ev); err != nil {
+		t.Fatalf("HandleEvent: %v", err)
+	}
+	if len(store.upserts) != 0 {
+		t.Fatalf("got upserts=%+v, want none — must never re-point at a different snowflake", store.upserts)
+	}
+	if len(store.invalidatedType) != 1 || store.invalidatedType[0] != appdb.DiscordSource {
+		t.Fatalf("invalidatedType = %v, want [discord]", store.invalidatedType)
 	}
 }
 
@@ -102,7 +225,7 @@ func TestHandleEvent_VerifiedStatusButBadSignature_NoUpsert(t *testing.T) {
 
 	tampered := strings.Replace(realClaimJSON, `"subject":"76561197994000231"`, `"subject":"1"`, 1)
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpCreate, Record: []byte(tampered)}
-	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
 	if len(store.upserts) != 0 {
@@ -112,25 +235,27 @@ func TestHandleEvent_VerifiedStatusButBadSignature_NoUpsert(t *testing.T) {
 
 func TestHandleEvent_UpdateToNonVerifiedStatus_InvalidatesTrackedRecord(t *testing.T) {
 	atURI := "at://did:plc:ephkzpinhaqcabtkugtbzrwu/dev.keytrace.claim/3mkwoifsquv2p"
-	store := &fakeStore{claim: &appdb.SteamClaim{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", RecordURI: atURI}}
+	store := &fakeStore{claims: map[string]*appdb.Claim{
+		appdb.SteamSource: {DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Type: appdb.SteamSource, RecordURI: atURI},
+	}}
 
 	retracted := strings.Replace(realClaimJSON, `"status":"verified"`, `"status":"retracted"`, 1)
 	ev := Event{DID: "did:plc:ephkzpinhaqcabtkugtbzrwu", Collection: keytrace.ClaimCollection, Rkey: "3mkwoifsquv2p", Operation: OpUpdate, Record: []byte(retracted)}
-	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if !store.invalidated {
-		t.Fatal("expected a retracted claim to be invalidated")
+	if len(store.invalidatedType) != 1 || store.invalidatedType[0] != appdb.SteamSource {
+		t.Fatalf("invalidatedType = %v, want a retracted claim to be invalidated", store.invalidatedType)
 	}
 }
 
-func TestHandleEvent_NonSteamType_Ignored(t *testing.T) {
+func TestHandleEvent_UnsupportedType_Ignored(t *testing.T) {
 	store := &fakeStore{}
 	ev := Event{DID: "did:plc:a", Collection: keytrace.ClaimCollection, Rkey: "x", Operation: OpCreate, Record: []byte(`{"type":"github","status":"verified"}`)}
-	if err := HandleEvent(context.Background(), store, testVerifier(), ev); err != nil {
+	if err := HandleEvent(context.Background(), store, testVerifier(), fakeSubjectResolver{}, ev); err != nil {
 		t.Fatalf("HandleEvent: %v", err)
 	}
-	if len(store.upserts) != 0 || store.invalidated {
-		t.Fatalf("got upserts=%+v invalidated=%v, want neither", store.upserts, store.invalidated)
+	if len(store.upserts) != 0 || len(store.invalidatedType) != 0 {
+		t.Fatalf("got upserts=%+v invalidatedType=%v, want neither", store.upserts, store.invalidatedType)
 	}
 }

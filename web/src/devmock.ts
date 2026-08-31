@@ -7,13 +7,25 @@ import type { LiveStatus } from './atproto'
 
 const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error' }> = {
   'signed-out': { me: null, live: null },
-  'no-claim': { me: { did: 'did:plc:mockuser', steamEnabled: false }, live: null },
+  'no-claim': {
+    me: {
+      did: 'did:plc:mockuser', steamEnabled: false, discordEnabled: false, sourceOrder: ['steam', 'discord'],
+      discordInviteUrl: 'https://discord.gg/example',
+    },
+    live: null,
+  },
   idle: {
-    me: { did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true },
+    me: {
+      did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
+      discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
+    },
     live: null,
   },
   playing: {
-    me: { did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true },
+    me: {
+      did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
+      discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
+    },
     live: {
       title: 'Slay the Spire II',
       description: 'The iconic roguelike deckbuilder returns!',
@@ -24,8 +36,27 @@ const FIXTURES: Record<string, { me: Me | null; live: LiveStatus | null | 'error
     },
   },
   error: {
-    me: { did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true },
+    me: {
+      did: 'did:plc:mockuser', steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
+      discordEnabled: false, sourceOrder: ['steam', 'discord'], discordInviteUrl: 'https://discord.gg/example',
+    },
     live: 'error',
+  },
+  'both-sources': {
+    me: {
+      did: 'did:plc:mockuser',
+      steamSubject: '76561197994000231', steamDisplayName: 'JP', steamEnabled: true,
+      discordSubject: '690973862245957683', discordDisplayName: 'byjp', discordEnabled: true,
+      sourceOrder: ['discord', 'steam'], discordInviteUrl: 'https://discord.gg/example',
+    },
+    live: {
+      title: 'Slay the Spire II',
+      description: 'The iconic roguelike deckbuilder returns!',
+      pageURL: 'https://cartridge.dev/game/slay-the-spire-ii',
+      createdAt: new Date(Date.now() - 47 * 60 * 1000).toISOString(),
+      staleAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      coverURL: 'https://pds.gamesgamesgamesgames.games/xrpc/com.atproto.sync.getBlob?did=did:web:gamesgamesgamesgames.games&cid=bafkreiafbwc3a3y47qnaguvov6rp4dhispbqeyglfxi5q37nb7lse34h7m',
+    },
   },
 }
 

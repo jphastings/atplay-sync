@@ -65,28 +65,3 @@ func ListAllDIDs(ctx context.Context, conn *sql.DB) ([]string, error) {
 	}
 	return dids, rows.Err()
 }
-
-// ListSteamEnabledDIDs returns DIDs eligible to sync right now: user intent
-// (sync_prefs) AND claim validity (steam_claims) both hold. See Global
-// Constraints — these two are intentionally never merged into one flag.
-func ListSteamEnabledDIDs(ctx context.Context, conn *sql.DB) ([]string, error) {
-	rows, err := conn.QueryContext(ctx, `
-		SELECT sp.did FROM sync_prefs sp
-		JOIN steam_claims sc ON sc.did = sp.did
-		WHERE sp.steam_enabled = 1
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var dids []string
-	for rows.Next() {
-		var did string
-		if err := rows.Scan(&did); err != nil {
-			return nil, err
-		}
-		dids = append(dids, did)
-	}
-	return dids, rows.Err()
-}

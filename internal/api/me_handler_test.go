@@ -20,8 +20,8 @@ func TestMeHandler_ReturnsClaimAndPrefs(t *testing.T) {
 
 	ctx := context.Background()
 	appdb.UpsertUser(ctx, conn, "did:plc:abc")
-	appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: "did:plc:abc", Subject: "765", DisplayName: "JP", ClaimURI: "x", RecordURI: "y"})
-	appdb.SetSteamEnabled(ctx, conn, "did:plc:abc", true)
+	appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: "did:plc:abc", Type: appdb.SteamSource, Subject: "765", DisplayName: "JP", ClaimURI: "x", RecordURI: "y"})
+	appdb.SetEnabled(ctx, conn, "did:plc:abc", appdb.SteamSource, true)
 
 	h := &MeHandler{Conn: conn}
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -36,5 +36,11 @@ func TestMeHandler_ReturnsClaimAndPrefs(t *testing.T) {
 	}
 	if got.DID != "did:plc:abc" || got.SteamSubject == nil || *got.SteamSubject != "765" || !got.SteamEnabled {
 		t.Fatalf("got %+v", got)
+	}
+	if got.DiscordSubject != nil || got.DiscordEnabled {
+		t.Fatalf("got %+v, want no discord claim/enablement", got)
+	}
+	if len(got.SourceOrder) != 1 || got.SourceOrder[0] != appdb.SteamSource {
+		t.Fatalf("got sourceOrder %v, want [steam]", got.SourceOrder)
 	}
 }

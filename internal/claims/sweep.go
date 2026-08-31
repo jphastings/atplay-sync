@@ -79,55 +79,74 @@ func parseSweepAtURI(atURI string) (did, collection, rkey string, ok bool) {
 	return parts[0], parts[1], parts[2], true
 }
 
-// RunSweep re-verifies every steam-enabled user's claim once a day — pure
-// reconciliation for whatever the Jetstream listener missed during a
-// disconnect (spec: "daily sweep"), not the primary revocation mechanism.
-func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, deleter appdb.StatusDeleter) error {
-	dids, err := appdb.ListSteamEnabledDIDs(ctx, conn)
-	if err != nil {
-		return err
-	}
-
-	for _, did := range dids {
-		claim, err := appdb.GetSteamClaim(ctx, conn, did)
+// RunSweep re-verifies every enabled user's claim of every supported type
+// once a day — pure reconciliation for whatever the Jetstream listener
+// missed during a disconnect (spec: "daily sweep"), not the primary
+// revocation mechanism.
+func RunSweep(ctx context.Context, conn *sql.DB, fetcher RecordFetcher, verifier *keytrace.Verifier, resolver SubjectResolver, reconciler appdb.Reconciler) error {
+	for _, claimType := range supportedClaimTypes {
+		dids, err := appdb.ListEnabledDIDs(ctx, conn, claimType)
 		if err != nil {
 			return err
 		}
-		if claim == nil {
-			continue
-		}
 
-		c, deleted, err := fetcher.FetchClaimRecord(ctx, claim.RecordURI)
-		if err != nil {
-			continue // uncertain outcome — try again on tomorrow's sweep
-		}
-		if deleted || c.Status != "verified" {
-			if err := appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource); err != nil {
+		for _, did := range dids {
+			claim, err := appdb.GetClaim(ctx, conn, did, claimType)
+			if err != nil {
 				return err
 			}
-			continue
-		}
+			if claim == nil {
+				continue
+			}
 
-		ok, err := verifier.VerifyAttestation(ctx, did, *c)
-		if err != nil {
-			continue
-		}
-		if !ok {
-			if err := appdb.InvalidateClaim(ctx, conn, deleter, did, appdb.SteamSource); err != nil {
+			c, deleted, err := fetcher.FetchClaimRecord(ctx, claim.RecordURI)
+			if err != nil {
+				continue // uncertain outcome — try again on tomorrow's sweep
+			}
+			if deleted || c.Status != "verified" {
+				if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, claimType, time.Now()); err != nil {
+					return err
+				}
+				continue
+			}
+
+			ok, err := verifier.VerifyAttestation(ctx, did, *c)
+			if err != nil {
+				continue
+			}
+			if !ok {
+				if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, claimType, time.Now()); err != nil {
+					return err
+				}
+				continue
+			}
+
+			subject := c.Identity.Subject
+			if claimType == appdb.DiscordSource {
+				if !resolver.ConfirmDiscordSubject(ctx, *c, claim.Subject) {
+					// unlike first discovery, this is a regression from an
+					// already-resolved state — invalidate rather than leave stale.
+					// Never re-resolve from scratch here: a Discord username
+					// released and reclaimed by someone else must not silently
+					// re-point this claim at their account.
+					if err := appdb.InvalidateClaim(ctx, conn, reconciler, did, claimType, time.Now()); err != nil {
+						return err
+					}
+					continue
+				}
+				subject = claim.Subject
+			}
+
+			// The event this sweep exists to catch may have been a missed *update*
+			// — a re-verification against a different subject at the same record.
+			// Confirming the signature isn't enough; without this we'd keep polling
+			// the old subject and publish someone else's play state to this user.
+			if err := appdb.UpsertClaim(ctx, conn, appdb.Claim{
+				DID: did, Type: claimType, Subject: subject, DisplayName: c.Identity.DisplayName,
+				ClaimURI: c.ClaimURI, RecordURI: claim.RecordURI, LastVerifiedAt: time.Now(),
+			}); err != nil {
 				return err
 			}
-			continue
-		}
-
-		// The event this sweep exists to catch may have been a missed *update*
-		// — a re-verification against a different SteamID at the same record.
-		// Confirming the signature isn't enough; without this we'd keep polling
-		// the old subject and publish someone else's play state to this user.
-		if err := appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{
-			DID: did, Subject: c.Identity.Subject, DisplayName: c.Identity.DisplayName,
-			ClaimURI: c.ClaimURI, RecordURI: claim.RecordURI, LastVerifiedAt: time.Now(),
-		}); err != nil {
-			return err
 		}
 	}
 	return nil

@@ -67,12 +67,12 @@ func seedEligibleUser(t *testing.T, conn *sql.DB, did, steamID string) {
 	if err := appdb.UpsertUser(ctx, conn, did); err != nil {
 		t.Fatalf("UpsertUser: %v", err)
 	}
-	if err := appdb.SetSteamEnabled(ctx, conn, did, true); err != nil {
-		t.Fatalf("SetSteamEnabled: %v", err)
+	if err := appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
 	}
-	err := appdb.UpsertSteamClaim(ctx, conn, appdb.SteamClaim{DID: did, Subject: steamID, ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
+	err := appdb.UpsertClaim(ctx, conn, appdb.Claim{DID: did, Type: appdb.SteamSource, Subject: steamID, ClaimURI: "x", RecordURI: "y", LastVerifiedAt: time.Now()})
 	if err != nil {
-		t.Fatalf("UpsertSteamClaim: %v", err)
+		t.Fatalf("UpsertClaim: %v", err)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestRunTick_PlayingResolvableGame_WritesStatus(t *testing.T) {
 	}
 }
 
-func TestRunTick_PlayingUnresolvableGame_SkipsWriteButRecordsSession(t *testing.T) {
+func TestRunTick_PlayingUnresolvableGame_RecordsSessionButDeletesRecord(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
 	seedEligibleUser(t, conn, "did:plc:a", "765")
@@ -112,8 +112,12 @@ func TestRunTick_PlayingUnresolvableGame_SkipsWriteButRecordsSession(t *testing.
 	if err := RunTick(ctx, conn, steamAPI, resolver, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
-	if len(writer.puts) != 0 || len(writer.deletes) != 0 {
-		t.Fatalf("got puts=%+v deletes=%+v, want neither", writer.puts, writer.deletes)
+	// An unresolvable game is, from the reconciler's point of view, the same
+	// as this source not currently playing — with no other source to fall
+	// through to, that means deleting the record rather than leaving a
+	// stale, wrong game showing.
+	if len(writer.puts) != 0 || len(writer.deletes) != 1 || writer.deletes[0] != "did:plc:a" {
+		t.Fatalf("got puts=%+v deletes=%+v, want a delete", writer.puts, writer.deletes)
 	}
 	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", "steam")
 	if err != nil {

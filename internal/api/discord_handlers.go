@@ -1,4 +1,4 @@
-// internal/api/steam_handlers.go
+// internal/api/discord_handlers.go
 package api
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/jphastings/game-status/internal/keytrace"
 )
 
-type SteamHandlers struct {
+type DiscordHandlers struct {
 	App        *oauth.ClientApp
 	Conn       *sql.DB
 	Verifier   *keytrace.Verifier
@@ -24,7 +24,7 @@ type SteamHandlers struct {
 	Jetstream  *jetstream.Manager
 }
 
-func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
+func (h *DiscordHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
 	did, ok := DIDFromContext(r.Context())
 	if !ok {
 		http.Error(w, "not signed in", http.StatusUnauthorized)
@@ -38,17 +38,12 @@ func (h *SteamHandlers) Recheck(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type enableRequest struct {
-	Enabled bool `json:"enabled"`
-}
-
-func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
+func (h *DiscordHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 	did, ok := DIDFromContext(r.Context())
 	if !ok {
 		http.Error(w, "not signed in", http.StatusUnauthorized)
 		return
 	}
-
 	var body enableRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -56,16 +51,16 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if body.Enabled {
-		claim, err := db.GetClaim(r.Context(), h.Conn, did, db.SteamSource)
+		claim, err := db.GetClaim(r.Context(), h.Conn, did, db.DiscordSource)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		if claim == nil {
-			http.Error(w, "no verified steam claim — recheck first", http.StatusConflict)
+			http.Error(w, "no verified discord claim — recheck first", http.StatusConflict)
 			return
 		}
-		if err := db.SetEnabled(r.Context(), h.Conn, did, db.SteamSource, true); err != nil {
+		if err := db.SetEnabled(r.Context(), h.Conn, did, db.DiscordSource, true); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -82,7 +77,7 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 		// only THEN flip the pref, so a failed Reconcile leaves it
 		// unchanged (still enabled) rather than silently marking the
 		// source disabled when we couldn't confirm the cleanup succeeded.
-		if err := db.ClearSessionStart(r.Context(), h.Conn, did, db.SteamSource); err != nil {
+		if err := db.ClearSessionStart(r.Context(), h.Conn, did, db.DiscordSource); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -90,7 +85,7 @@ func (h *SteamHandlers) SetEnabled(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if err := db.SetEnabled(r.Context(), h.Conn, did, db.SteamSource, false); err != nil {
+		if err := db.SetEnabled(r.Context(), h.Conn, did, db.DiscordSource, false); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

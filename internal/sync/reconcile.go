@@ -1,0 +1,90 @@
+// internal/sync/reconcile.go
+package sync
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	appdb "github.com/jphastings/game-status/internal/db"
+)
+
+type Reconciler struct {
+	Conn     *sql.DB
+	Resolver GameResolver
+	Writer   RecordWriter
+}
+
+var _ appdb.Reconciler = (*Reconciler)(nil)
+
+// Reconcile decides what, if anything, is publicly shown for did: the
+// highest-priority enabled source with both a live session and a
+// resolvable game wins; an unresolvable game falls through to the next
+// source, same as "not currently playing" from that source's point of
+// view. Nothing playing (or nothing resolvable) deletes the record.
+//
+// Call this after any change to any source's session_starts row, after
+// enable/disable, after a priority reorder, and after a claim
+// invalidation — nothing else should call Writer.PutStatus/DeleteStatus.
+func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
+	sources, err := appdb.ListEnabledSourcesByPriority(ctx, r.Conn, did)
+	if err != nil {
+		return err
+	}
+
+	for _, source := range sources {
+		row, err := appdb.GetSessionStart(ctx, r.Conn, did, source)
+		if err != nil {
+			return err
+		}
+		if row == nil {
+			continue
+		}
+		game, err := r.Resolver.GetGameBySteamID(ctx, row.GameKey)
+		if err != nil {
+			return err
+		}
+		if game == nil {
+			continue
+		}
+		return r.Writer.PutStatus(ctx, did, ActorStatus{
+			Type: "games.gamesgamesgamesgames.actor.status", Game: game.URI,
+			Playing:   map[string]any{},
+			Embed:     &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
+			CreatedAt: row.StartedAt.UTC().Format(time.RFC3339),
+			StaleAt:   now.Add(staleBuffer).UTC().Format(time.RFC3339),
+			Via:       ViaClientName,
+		})
+	}
+	return r.Writer.DeleteStatus(ctx, did)
+}
+
+// UpdateSession is the source-agnostic half of what tickOne used to do
+// alone: given whether a source is currently playing something (and
+// what), update that source's session_starts row via the existing pure
+// Decide, then let the reconciler decide what's publicly shown. Steam's
+// tick and Discord's presence handler both call this — it's the only
+// place either one touches session_starts.
+func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, did, source string, playing bool, gameKey string, now time.Time) error {
+	var prev *SessionStart
+	row, err := appdb.GetSessionStart(ctx, conn, did, source)
+	if err != nil {
+		return err
+	}
+	if row != nil {
+		prev = &SessionStart{GameKey: row.GameKey, StartedAt: row.StartedAt}
+	}
+
+	decision := Decide(playing, gameKey, prev, now)
+	switch decision.Action {
+	case ActionDelete:
+		if err := appdb.ClearSessionStart(ctx, conn, did, source); err != nil {
+			return err
+		}
+	case ActionWrite:
+		if err := appdb.SetSessionStart(ctx, conn, did, source, decision.GameKey, decision.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return reconciler.Reconcile(ctx, did, now)
+}

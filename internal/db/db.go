@@ -23,12 +23,8 @@ func Open(path string) (*sql.DB, error) {
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
-	schema, err := migrationsFS.ReadFile("migrations/0001_init.sql")
-	if err != nil {
-		return nil, err
-	}
-	if _, err := conn.Exec(string(schema)); err != nil {
-		return nil, fmt.Errorf("apply schema: %w", err)
+	if err := applyMigrations(conn, migrationsFS); err != nil {
+		return nil, fmt.Errorf("apply migrations: %w", err)
 	}
 	return conn, nil
 }
