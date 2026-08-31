@@ -6,8 +6,8 @@ const statusRkey = "self"
 
 // ViaClientName identifies this app in the record's `via` field, per the
 // lexicon's own description: "the (unique) name of the client ... which
-// wrote this record."
-const ViaClientName = "at-play-sync"
+// wrote this record." Set from BASE_URL's host at startup (see main.go).
+var ViaClientName string
 
 type ActorStatus struct {
 	Type string `json:"$type"`

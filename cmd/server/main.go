@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/bluesky-social/indigo/atproto/atcrypto"
@@ -44,6 +45,12 @@ func main() {
 		log.Fatalf("db: %v", err)
 	}
 	defer conn.Close()
+
+	baseURL, err := url.Parse(cfg.BaseURL)
+	if err != nil {
+		log.Fatalf("BASE_URL: %v", err)
+	}
+	sync.ViaClientName = baseURL.Hostname()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
