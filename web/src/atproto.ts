@@ -102,13 +102,29 @@ export interface LiveStatus {
   coverURL?: string
 }
 
-/** Reads the signed-in user's live status directly from their own PDS, resolving cover art from the linked game record. Returns null if they're not currently playing anything, or 'error' if their PDS couldn't be reached. */
-export async function resolveLiveStatus(did: string): Promise<LiveStatus | null | 'error'> {
-  const status = await getRecord<StatusRecord>(did, 'games.atmosphere.status', 'self')
-  if (status.kind === 'notfound') return null
-  if (status.kind === 'error') return 'error'
+/** Reads every live (non-stale) status the signed-in user has published across all their sources, resolving cover art from each linked game record. Returns 'error' if their PDS couldn't be reached. */
+export async function resolveLiveStatuses(did: string): Promise<LiveStatus[] | 'error'> {
+  const pds = await resolvePDS(did)
+  if (!pds) return 'error'
 
-  const { game, embed, createdAt, staleAt } = status.value
+  let records: { uri: string; cid: string; value: StatusRecord }[]
+  try {
+    const url = `${pds}/xrpc/com.atproto.repo.listRecords?${new URLSearchParams({ repo: did, collection: 'games.atmosphere.status' })}`
+    const res = await fetch(url)
+    if (!res.ok) return 'error'
+    const body = await res.json()
+    records = body.records ?? []
+  } catch {
+    return 'error'
+  }
+
+  const now = Date.now()
+  const live = records.filter((r) => new Date(r.value.staleAt).getTime() > now)
+  return Promise.all(live.map((r) => toLiveStatus(r.value)))
+}
+
+async function toLiveStatus(value: StatusRecord): Promise<LiveStatus> {
+  const { game, embed, createdAt, staleAt } = value
   const base: LiveStatus = {
     title: embed?.external.title ?? game,
     description: embed?.external.description ?? '',
