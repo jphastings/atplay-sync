@@ -31,6 +31,42 @@ func TestSetSessionStart_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestSetSessionExtra_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+
+	if err := SetSessionStart(ctx, conn, "did:plc:test", "discord", "app-123", time.Now()); err != nil {
+		t.Fatalf("SetSessionStart: %v", err)
+	}
+	if err := SetSessionExtra(ctx, conn, "did:plc:test", "discord", `{"state":"Ranked"}`); err != nil {
+		t.Fatalf("SetSessionExtra: %v", err)
+	}
+
+	s, err := GetSessionStart(ctx, conn, "did:plc:test", "discord")
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if s == nil || s.Extra != `{"state":"Ranked"}` {
+		t.Fatalf("got %+v, want Extra to round-trip", s)
+	}
+}
+
+func TestGetSessionStart_ExtraDefaultsEmpty(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+
+	if err := SetSessionStart(ctx, conn, "did:plc:test", "steam", "app-123", time.Now()); err != nil {
+		t.Fatalf("SetSessionStart: %v", err)
+	}
+	s, err := GetSessionStart(ctx, conn, "did:plc:test", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if s == nil || s.Extra != "" {
+		t.Fatalf("got %+v, want empty Extra (never set)", s)
+	}
+}
+
 func TestGetSessionStart_MissingReturnsNil(t *testing.T) {
 	conn := openTestDB(t)
 	s, err := GetSessionStart(context.Background(), conn, "did:plc:nobody", "steam")

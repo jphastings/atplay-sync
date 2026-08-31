@@ -33,9 +33,14 @@ func TestOpen_RecordsAppliedMigrationsAndIsIdempotent(t *testing.T) {
 		}
 		got = append(got, v)
 	}
-	want := []string{"0001_init.sql", "0002_generalize_sources.sql"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	want := []string{"0001_init.sql", "0002_generalize_sources.sql", "0003_session_extra.sql"}
+	if len(got) != len(want) {
 		t.Fatalf("schema_migrations = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("schema_migrations = %v, want %v", got, want)
+		}
 	}
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE session_starts ADD COLUMN extra TEXT NOT NULL DEFAULT '';

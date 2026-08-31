@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -63,14 +64,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 		if _, claimed := desired[rkey]; claimed {
 			continue // a higher-priority source already claimed this game
 		}
-		desired[rkey] = ActorStatus{
+		status := ActorStatus{
 			Type: "games.atmosphere.status", Game: game.URI,
-			Playing:   map[string]any{},
 			Embed:     &Embed{Type: "app.bsky.embed.external", External: EmbedExternal{URI: game.PageURL, Title: game.Name, Description: game.Summary}},
 			CreatedAt: row.StartedAt.UTC().Format(time.RFC3339),
 			StaleAt:   now.Add(staleBuffer).UTC().Format(time.RFC3339),
 			Via:       ViaClientName,
 		}
+		if row.Extra != "" {
+			var extra SessionExtra
+			if err := json.Unmarshal([]byte(row.Extra), &extra); err == nil {
+				status.State = extra.State
+				status.Details = extra.Details
+				if extra.PartyID != "" || extra.PartyCurrent > 0 {
+					status.Playing.ID = extra.PartyID
+					status.Playing.Party = &Party{Current: extra.PartyCurrent, Max: extra.PartyMax, DIDs: extra.PartyDIDs}
+				}
+			}
+		}
+		desired[rkey] = status
 	}
 
 	live, err := r.Writer.ListStatuses(ctx, did)
@@ -101,7 +113,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 // Decide, then let the reconciler decide what's publicly shown. Steam's
 // tick and Discord's presence handler both call this — it's the only
 // place either one touches session_starts.
-func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, did, source string, playing bool, gameKey string, now time.Time) error {
+//
+// extra is opaque per-source metadata (state/details/party — only Discord
+// ever populates it; Steam passes the zero value) persisted alongside the
+// session so Reconcile can read it back later, since Reconcile re-reads
+// every enabled source's row fresh rather than receiving this call's data
+// directly.
+func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, did, source string, playing bool, gameKey string, extra SessionExtra, now time.Time) error {
 	var prev *SessionStart
 	row, err := appdb.GetSessionStart(ctx, conn, did, source)
 	if err != nil {
@@ -119,6 +137,13 @@ func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, di
 		}
 	case ActionWrite:
 		if err := appdb.SetSessionStart(ctx, conn, did, source, decision.GameKey, decision.CreatedAt); err != nil {
+			return err
+		}
+		extraJSON, err := json.Marshal(extra)
+		if err != nil {
+			return err
+		}
+		if err := appdb.SetSessionExtra(ctx, conn, did, source, string(extraJSON)); err != nil {
 			return err
 		}
 	}

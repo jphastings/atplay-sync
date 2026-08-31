@@ -40,21 +40,78 @@ func (h *PresenceHandler) HandlePresenceUpdate(s *discordgo.Session, e *discordg
 	}
 
 	var gameKey string
+	var extra appsync.SessionExtra
 	playing := false
 	for _, activity := range e.Activities {
 		if activity.Type != discordgo.ActivityTypeGame || activity.ApplicationID == "" {
 			continue
 		}
-		if appID, ok := h.Games.SteamAppID(activity.ApplicationID); ok {
-			gameKey = appID
-			playing = true
+		appID, ok := h.Games.SteamAppID(activity.ApplicationID)
+		if !ok {
+			continue
+		}
+		gameKey = appID
+		playing = true
+		extra.State = activity.State
+		extra.Details = activity.Details
+		if activity.Party.ID != "" {
+			extra.PartyID = activity.Party.ID
+			if len(activity.Party.Size) > 0 {
+				extra.PartyCurrent = activity.Party.Size[0]
+			}
+			if len(activity.Party.Size) > 1 {
+				extra.PartyMax = activity.Party.Size[1]
+			}
+			extra.PartyDIDs = h.partyMemberDIDs(ctx, s, activity.ApplicationID, activity.Party.ID)
+		}
+		break
+	}
+
+	if err := appsync.UpdateSession(ctx, h.Conn, h.Reconciler, claim.DID, appdb.DiscordSource, playing, gameKey, extra, time.Now()); err != nil {
+		slog.Error("discord presence update failed", "discord_id", e.User.ID, "err", err)
+	}
+}
+
+// partyMemberDIDs resolves co-players sharing this Discord activity party to
+// their DIDs, reusing discordgo's own guild presence cache (Session.State,
+// already populated by the same GUILD_PRESENCES intent this bot requests —
+// no bespoke index needed; discordgo applies state updates before dispatching
+// to handlers, so this always reflects the very event being handled).
+//
+// A co-player is included only if they'd pass the same claim+enabled gate
+// that governs whether we'd write a status for them off their own presence
+// event — that gate IS each person's individual consent to publish their
+// Discord activity, so it applies symmetrically to being named in someone
+// else's party. This naturally includes the primary user themself (their
+// own presence is in the same slice, already past that gate), matching the
+// lexicon's "including yourself".
+func (h *PresenceHandler) partyMemberDIDs(ctx context.Context, s *discordgo.Session, appID, partyID string) []string {
+	if s == nil || s.State == nil {
+		return nil // e.g. under test — supplementary data, never blocks state/details/count
+	}
+	guild, err := s.State.Guild(h.GuildID)
+	if err != nil {
+		return nil
+	}
+	var dids []string
+	for _, presence := range guild.Presences {
+		for _, activity := range presence.Activities {
+			if activity.Type != discordgo.ActivityTypeGame || activity.ApplicationID != appID || activity.Party.ID != partyID {
+				continue
+			}
+			claim, err := findClaimByDiscordID(ctx, h.Conn, presence.User.ID)
+			if err != nil || claim == nil {
+				break
+			}
+			enabled, err := appdb.IsEnabled(ctx, h.Conn, claim.DID, appdb.DiscordSource)
+			if err != nil || !enabled {
+				break
+			}
+			dids = append(dids, claim.DID)
 			break
 		}
 	}
-
-	if err := appsync.UpdateSession(ctx, h.Conn, h.Reconciler, claim.DID, appdb.DiscordSource, playing, gameKey, time.Now()); err != nil {
-		slog.Error("discord presence update failed", "discord_id", e.User.ID, "err", err)
-	}
+	return dids
 }
 
 // HandleGuildMemberRemove treats leaving the tracking guild like a revoked

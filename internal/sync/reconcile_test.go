@@ -3,6 +3,7 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -197,6 +198,69 @@ func TestReconcile_ForeignViaRecord_NotDeleted(t *testing.T) {
 	}
 	if len(writer.deletes) != 0 {
 		t.Fatalf("got deletes=%+v, want none — this record belongs to a different via, not ours to touch", writer.deletes)
+	}
+}
+
+func TestReconcile_ExtraPopulatesStateDetailsAndParty(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.DiscordSource, true)
+	appdb.SetSessionStart(ctx, conn, did, appdb.DiscordSource, "570", time.Now())
+	extra := SessionExtra{State: "Ranked", Details: "Diamond II", PartyID: "party-1", PartyCurrent: 2, PartyMax: 5, PartyDIDs: []string{"did:plc:a", "did:plc:b"}}
+	extraJSON, _ := json.Marshal(extra)
+	if err := appdb.SetSessionExtra(ctx, conn, did, appdb.DiscordSource, string(extraJSON)); err != nil {
+		t.Fatalf("SetSessionExtra: %v", err)
+	}
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
+	}}
+	writer := &fakeWriter{}
+	r := &Reconciler{Conn: conn, Resolver: resolver, Writer: writer}
+
+	if err := r.Reconcile(ctx, did, time.Now()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(writer.puts) != 1 {
+		t.Fatalf("got puts=%+v, want 1", writer.puts)
+	}
+	status := writer.puts[0].status
+	if status.State != "Ranked" || status.Details != "Diamond II" {
+		t.Fatalf("got state=%q details=%q, want Ranked/Diamond II", status.State, status.Details)
+	}
+	if status.Playing.ID != "party-1" || status.Playing.Party == nil {
+		t.Fatalf("got Playing=%+v, want party-1 with a Party", status.Playing)
+	}
+	if status.Playing.Party.Current != 2 || status.Playing.Party.Max != 5 || len(status.Playing.Party.DIDs) != 2 {
+		t.Fatalf("got Party=%+v, want current=2 max=5 dids=2", status.Playing.Party)
+	}
+}
+
+func TestReconcile_NoExtra_PlayingEmpty(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
+	}}
+	writer := &fakeWriter{}
+	r := &Reconciler{Conn: conn, Resolver: resolver, Writer: writer}
+
+	if err := r.Reconcile(ctx, did, time.Now()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if len(writer.puts) != 1 {
+		t.Fatalf("got puts=%+v, want 1", writer.puts)
+	}
+	status := writer.puts[0].status
+	if status.State != "" || status.Details != "" || status.Playing.Party != nil {
+		t.Fatalf("got status=%+v, want empty State/Details/Party (Steam never sets Extra)", status)
 	}
 }
 
