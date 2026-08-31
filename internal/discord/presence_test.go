@@ -36,23 +36,32 @@ func (f fakeResolver) GetGameBySteamID(ctx context.Context, appID string) (*appd
 }
 
 type recordedPut struct {
-	did    string
-	status appsync.ActorStatus
+	did, rkey string
+	status    appsync.ActorStatus
+}
+
+type recordedDelete struct {
+	did, rkey string
 }
 
 type fakeWriter struct {
+	live    map[string][]appsync.StatusEntry
 	puts    []recordedPut
-	deletes []string
+	deletes []recordedDelete
 }
 
-func (f *fakeWriter) PutStatus(ctx context.Context, did string, status appsync.ActorStatus) error {
-	f.puts = append(f.puts, recordedPut{did, status})
+func (f *fakeWriter) PutStatus(ctx context.Context, did, rkey string, status appsync.ActorStatus) error {
+	f.puts = append(f.puts, recordedPut{did, rkey, status})
 	return nil
 }
 
-func (f *fakeWriter) DeleteStatus(ctx context.Context, did string) error {
-	f.deletes = append(f.deletes, did)
+func (f *fakeWriter) DeleteStatus(ctx context.Context, did, rkey string) error {
+	f.deletes = append(f.deletes, recordedDelete{did, rkey})
 	return nil
+}
+
+func (f *fakeWriter) ListStatuses(ctx context.Context, did string) ([]appsync.StatusEntry, error) {
+	return f.live[did], nil
 }
 
 func seedDiscordUser(t *testing.T, conn *sql.DB, did, discordID string) {
