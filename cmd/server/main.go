@@ -187,6 +187,16 @@ func main() {
 		}
 	}()
 
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := sync.RunStatusSweep(context.Background(), conn, writer, time.Now()); err != nil {
+				slog.Error("daily status sweep", "err", err)
+			}
+		}
+	}()
+
 	jetHandler := func(ctx context.Context, ev jetstream.Event) error {
 		return jetstream.HandleEvent(ctx, jetstream.DBStore{Conn: conn, Reconciler: reconciler}, verifier, discordResolver, ev)
 	}
