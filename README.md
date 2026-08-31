@@ -12,6 +12,29 @@ for the rest of the day. A Jetstream subscription watches
 `dev.keytrace.claim` so a revoked claim stops the sync in real time, with
 a daily sweep as the backstop.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    Steam
+    Discord
+    DB
+    G5PDS["g5" PDS]
+    PlayerPDS[Player's PDS]
+    Backend
+    Frontend
+
+    PlayerPDS -- status records --> Frontend
+    G5PDS -- game details --> Frontend
+    Steam -- play status (poll) --> Backend
+    Discord -- presence (websocket) --> Backend
+    Backend -- write status records --> PlayerPDS
+
+    Backend <-- sync info & prefs --> Frontend
+    DB <-- auth tokens & sync prefs --> Backend 
+    
+```
+
 ## Build
 
 The binary embeds the built frontend from `cmd/server/web/dist`, which is a
