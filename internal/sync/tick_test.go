@@ -42,23 +42,38 @@ func (f fakeResolver) GetGameBySteamID(ctx context.Context, appID string) (*appd
 }
 
 type recordedPut struct {
-	did    string
-	status ActorStatus
+	did, rkey string
+	status    ActorStatus
 }
 
+type recordedDelete struct {
+	did, rkey string
+}
+
+// fakeWriter's live map is what ListStatuses returns per did — seed it to
+// simulate records already published in an earlier reconcile so Put/Delete
+// diffing has something real to react to. It's a static snapshot (Put/Delete
+// calls are only recorded, not applied back into `live`), which is enough
+// for every test here: each one only asserts what Reconcile *decided* to do
+// in a single pass, not multi-pass convergence.
 type fakeWriter struct {
+	live    map[string][]StatusEntry
 	puts    []recordedPut
-	deletes []string
+	deletes []recordedDelete
 }
 
-func (f *fakeWriter) PutStatus(ctx context.Context, did string, status ActorStatus) error {
-	f.puts = append(f.puts, recordedPut{did, status})
+func (f *fakeWriter) PutStatus(ctx context.Context, did, rkey string, status ActorStatus) error {
+	f.puts = append(f.puts, recordedPut{did, rkey, status})
 	return nil
 }
 
-func (f *fakeWriter) DeleteStatus(ctx context.Context, did string) error {
-	f.deletes = append(f.deletes, did)
+func (f *fakeWriter) DeleteStatus(ctx context.Context, did, rkey string) error {
+	f.deletes = append(f.deletes, recordedDelete{did, rkey})
 	return nil
+}
+
+func (f *fakeWriter) ListStatuses(ctx context.Context, did string) ([]StatusEntry, error) {
+	return f.live[did], nil
 }
 
 func seedEligibleUser(t *testing.T, conn *sql.DB, did, steamID string) {
@@ -95,7 +110,7 @@ func TestRunTick_PlayingResolvableGame_WritesStatus(t *testing.T) {
 		t.Fatalf("got %d puts, want 1", len(writer.puts))
 	}
 	got := writer.puts[0]
-	if got.did != "did:plc:a" || got.status.Game != "at://cartridge/games.gamesgamesgamesgames.game/gta5" || got.status.Embed.External.Title != "GTA V" {
+	if got.did != "did:plc:a" || got.rkey != "gta5" || got.status.Game != "at://cartridge/games.gamesgamesgamesgames.game/gta5" || got.status.Embed.External.Title != "GTA V" {
 		t.Fatalf("got %+v", got)
 	}
 }
@@ -107,17 +122,17 @@ func TestRunTick_PlayingUnresolvableGame_RecordsSessionButDeletesRecord(t *testi
 
 	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765", GameID: "999999"}}}
 	resolver := fakeResolver{games: map[string]*appdb.CachedGame{}} // cartridge doesn't know this appid
-	writer := &fakeWriter{}
+	writer := &fakeWriter{live: map[string][]StatusEntry{"did:plc:a": {{Rkey: "old-rkey", StaleAt: time.Now().Add(time.Hour)}}}}
 
 	if err := RunTick(ctx, conn, steamAPI, resolver, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
 	// An unresolvable game is, from the reconciler's point of view, the same
 	// as this source not currently playing — with no other source to fall
-	// through to, that means deleting the record rather than leaving a
-	// stale, wrong game showing.
-	if len(writer.puts) != 0 || len(writer.deletes) != 1 || writer.deletes[0] != "did:plc:a" {
-		t.Fatalf("got puts=%+v deletes=%+v, want a delete", writer.puts, writer.deletes)
+	// through to, that means deleting whatever record was live rather than
+	// leaving a stale, wrong game showing.
+	if len(writer.puts) != 0 || len(writer.deletes) != 1 || writer.deletes[0] != (recordedDelete{did: "did:plc:a", rkey: "old-rkey"}) {
+		t.Fatalf("got puts=%+v deletes=%+v, want a delete of old-rkey", writer.puts, writer.deletes)
 	}
 	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", "steam")
 	if err != nil {
@@ -171,13 +186,13 @@ func TestRunTick_NotPlaying_Deletes(t *testing.T) {
 	seedEligibleUser(t, conn, "did:plc:a", "765")
 
 	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765"}}} // no GameID
-	writer := &fakeWriter{}
+	writer := &fakeWriter{live: map[string][]StatusEntry{"did:plc:a": {{Rkey: "was-playing", StaleAt: time.Now().Add(time.Hour)}}}}
 
 	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, steam.NewBudget(1000), time.Now()); err != nil {
 		t.Fatalf("RunTick: %v", err)
 	}
-	if len(writer.deletes) != 1 || writer.deletes[0] != "did:plc:a" {
-		t.Fatalf("got deletes=%+v, want [did:plc:a]", writer.deletes)
+	if len(writer.deletes) != 1 || writer.deletes[0] != (recordedDelete{did: "did:plc:a", rkey: "was-playing"}) {
+		t.Fatalf("got deletes=%+v, want a delete of was-playing", writer.deletes)
 	}
 }
 

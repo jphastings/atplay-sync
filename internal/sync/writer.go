@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/bluesky-social/indigo/api/agnostic"
 	comatproto "github.com/bluesky-social/indigo/api/atproto"
@@ -43,7 +44,7 @@ func (w *ATProtoWriter) withClient(ctx context.Context, did string, fn func(*atc
 	})
 }
 
-func (w *ATProtoWriter) PutStatus(ctx context.Context, did string, status ActorStatus) error {
+func (w *ATProtoWriter) PutStatus(ctx context.Context, did, rkey string, status ActorStatus) error {
 	raw, err := json.Marshal(status)
 	if err != nil {
 		return err
@@ -54,22 +55,59 @@ func (w *ATProtoWriter) PutStatus(ctx context.Context, did string, status ActorS
 	}
 	return w.withClient(ctx, did, func(client *atclient.APIClient) error {
 		_, err := agnostic.RepoPutRecord(ctx, client, &agnostic.RepoPutRecord_Input{
-			Collection: StatusCollection, Repo: did, Rkey: statusRkey, Record: record,
+			Collection: StatusCollection, Repo: did, Rkey: rkey, Record: record,
 		})
 		return err
 	})
 }
 
-func (w *ATProtoWriter) DeleteStatus(ctx context.Context, did string) error {
+func (w *ATProtoWriter) DeleteStatus(ctx context.Context, did, rkey string) error {
 	return w.withClient(ctx, did, func(client *atclient.APIClient) error {
 		_, err := comatproto.RepoDeleteRecord(ctx, client, &comatproto.RepoDeleteRecord_Input{
-			Collection: StatusCollection, Repo: did, Rkey: statusRkey,
+			Collection: StatusCollection, Repo: did, Rkey: rkey,
 		})
 		if err != nil && isRecordNotFound(err) {
 			return nil // idempotent — deleting an already-gone record is success (Global Constraints)
 		}
 		return err
 	})
+}
+
+// statusListLimit is comfortably above how many status records one account
+// could ever have live at once (bounded by enabled source count).
+// ponytail: fixed page, no cursor pagination loop; revisit if that bound changes.
+const statusListLimit = 100
+
+// ListStatuses reads every games.atmosphere.status record currently live
+// for did straight off their PDS — the source of truth Reconcile diffs
+// against, and RunStatusSweep checks for expiry.
+func (w *ATProtoWriter) ListStatuses(ctx context.Context, did string) ([]StatusEntry, error) {
+	var entries []StatusEntry
+	err := w.withClient(ctx, did, func(client *atclient.APIClient) error {
+		out, err := agnostic.RepoListRecords(ctx, client, StatusCollection, "", statusListLimit, did, false)
+		if err != nil {
+			return err
+		}
+		for _, rec := range out.Records {
+			_, _, rkey, ok := parseAtURI(rec.Uri)
+			if !ok {
+				continue
+			}
+			var v struct {
+				StaleAt string `json:"staleAt"`
+			}
+			if err := json.Unmarshal(*rec.Value, &v); err != nil {
+				return fmt.Errorf("parse status record %s: %w", rec.Uri, err)
+			}
+			staleAt, err := time.Parse(time.RFC3339, v.StaleAt)
+			if err != nil {
+				return fmt.Errorf("parse staleAt for %s: %w", rec.Uri, err)
+			}
+			entries = append(entries, StatusEntry{Rkey: rkey, StaleAt: staleAt})
+		}
+		return nil
+	})
+	return entries, err
 }
 
 // isRecordNotFound checks indigo's actual XRPC error type. Confirmed by

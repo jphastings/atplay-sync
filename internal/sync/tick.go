@@ -26,8 +26,17 @@ type GameResolver interface {
 }
 
 type RecordWriter interface {
-	PutStatus(ctx context.Context, did string, status ActorStatus) error
-	DeleteStatus(ctx context.Context, did string) error
+	PutStatus(ctx context.Context, did, rkey string, status ActorStatus) error
+	DeleteStatus(ctx context.Context, did, rkey string) error
+	ListStatuses(ctx context.Context, did string) ([]StatusEntry, error)
+}
+
+// StatusEntry is one games.atmosphere.status record as read back off a PDS —
+// just enough to diff against what should currently be live (Reconcile) or
+// check for expiry (RunStatusSweep).
+type StatusEntry struct {
+	Rkey    string
+	StaleAt time.Time
 }
 
 // CallBudget guards RunTick's Steam calls against a self-imposed daily

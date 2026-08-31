@@ -2,7 +2,6 @@
 package sync
 
 const StatusCollection = "games.atmosphere.status"
-const statusRkey = "self"
 
 // ViaClientName identifies this app in the record's `via` field, per the
 // lexicon's own description: "the (unique) name of the client ... which
