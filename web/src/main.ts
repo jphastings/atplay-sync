@@ -134,7 +134,7 @@ function sourceRowHTML(source: Source, me: Me): string {
       : `You must <a href="https://keytrace.dev/add/${source}" target="_blank" rel="noopener noreferrer">link your ${label} account</a> before you can sync it`
 
   return `
-    <label class="toggle-row" draggable="${connected}" data-source="${source}">
+    <label class="toggle-row" data-connected="${connected}" data-source="${source}">
       <span class="toggle-label">
         <span class="toggle-label-title">${icon} ${label}</span>
         <span class="toggle-label-sub">${subtitle}</span>
@@ -164,40 +164,124 @@ function attachSourcesListeners() {
         await setEnabled(next)
       } catch {
         target.checked = !next // revert on failure — don't leave the UI claiming a state that didn't take
+        return
       }
+      sinkDisabledRows(sources)
     })
   })
 
-  let draggedSource: string | null = null
-  sources.querySelectorAll<HTMLElement>('.toggle-row').forEach((row) => {
-    row.addEventListener('dragstart', (e) => {
-      draggedSource = row.dataset.source ?? null
-      if (draggedSource) e.dataTransfer?.setData('text/plain', draggedSource)
-    })
-    row.addEventListener('dragover', (e) => e.preventDefault())
-    row.addEventListener('drop', async (e) => {
-      e.preventDefault()
-      if (!draggedSource || draggedSource === row.dataset.source) return
-      const dragged = sources.querySelector<HTMLElement>(`.toggle-row[data-source="${draggedSource}"]`)
-      if (!dragged) return
-
-      const rows = Array.from(sources.querySelectorAll<HTMLElement>('.toggle-row'))
-      if (rows.indexOf(dragged) < rows.indexOf(row)) row.after(dragged)
-      else row.before(dragged)
-
-      const newOrder = Array.from(sources.querySelectorAll<HTMLElement>('.toggle-row')).map((r) => r.dataset.source!)
-      try {
-        await setSourceOrder(newOrder)
-      } catch {
-        // fall through — the re-render below still reflects the server's actual (unchanged) order
-      }
-      const refreshed = await currentMe()
-      if (refreshed) {
-        sources.innerHTML = sourcesHTML(refreshed)
-        attachSourcesListeners()
-      }
+  sources.querySelectorAll<HTMLElement>('.toggle-row[data-connected="true"]').forEach((row) => {
+    row.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).closest('a, .toggle')) return // let links and the switch itself handle their own click
+      beginRowDrag(sources, row, e)
     })
   })
+}
+
+// Keeps enabled rows above disabled ones — toggling a row off sinks it
+// below any still-active row (and vice versa), animated the same way a
+// manual drag settles.
+function sinkDisabledRows(sources: HTMLElement) {
+  const rows = Array.from(sources.querySelectorAll<HTMLElement>('.toggle-row'))
+  const firstTops = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]))
+
+  const ordered = [
+    ...rows.filter((r) => r.querySelector('input')!.checked),
+    ...rows.filter((r) => !r.querySelector('input')!.checked),
+  ]
+  ordered.forEach((r) => sources.appendChild(r))
+
+  for (const r of rows) {
+    const delta = firstTops.get(r)! - r.getBoundingClientRect().top
+    r.style.transition = 'none'
+    r.style.transform = delta ? `translateY(${delta}px)` : ''
+    requestAnimationFrame(() => {
+      r.style.transition = ''
+      r.style.transform = ''
+    })
+  }
+
+  setSourceOrder(ordered.map((r) => r.dataset.source!)).catch(() => {
+    // fire-and-forget, like the drag reorder — a lost persist just means the
+    // next real reload reflects the server's last-known order
+  })
+}
+
+// Drags `row` by tracking the pointer directly (native HTML5 drag-and-drop
+// can't be confined to a container — its ghost image floats free over the
+// whole page — so reordering is hand-rolled with Pointer Events instead).
+// Siblings are shifted with a CSS transform sized to the dragged row's own
+// footprint, standard "make room" reorder feedback; the real DOM order is
+// only touched once, on release.
+function beginRowDrag(sources: HTMLElement, row: HTMLElement, downEvent: PointerEvent) {
+  const containerRect = sources.getBoundingClientRect()
+  const rows = Array.from(sources.querySelectorAll<HTMLElement>('.toggle-row'))
+  const slots = rows.map((r) => {
+    const rect = r.getBoundingClientRect()
+    return { row: r, top: rect.top - containerRect.top, height: rect.height }
+  })
+  const dragged = slots.find((s) => s.row === row)!
+  const others = slots.filter((s) => s.row !== row)
+  const gap = parseFloat(getComputedStyle(sources).rowGap || '0')
+  const step = dragged.height + gap
+  const maxTop = containerRect.height - dragged.height
+  const startY = downEvent.clientY
+  let targetIndex = others.findIndex((o) => o.top >= dragged.top)
+  if (targetIndex === -1) targetIndex = others.length
+
+  row.setPointerCapture(downEvent.pointerId)
+  let dragging = false
+
+  function onMove(e: PointerEvent) {
+    if (!dragging) {
+      if (Math.abs(e.clientY - startY) < 4) return // small-movement clicks still reach the checkbox untouched
+      dragging = true
+      row.classList.add('dragging')
+    }
+
+    const clampedTop = Math.min(Math.max(dragged.top + (e.clientY - startY), 0), maxTop)
+    row.style.transform = `translateY(${clampedTop - dragged.top}px)`
+
+    // Target slot follows the pointer itself, not the dragged row's own
+    // (clamped) box — comparing box-to-box centers means the last slot's
+    // trigger point coincides exactly with the clamp boundary and can never
+    // fire. The pointer has no such ceiling, so it always resolves cleanly.
+    const pointerY = Math.min(Math.max(e.clientY - containerRect.top, 0), containerRect.height)
+    targetIndex = others.filter((o) => o.top + o.height / 2 < pointerY).length
+    others.forEach((o, j) => {
+      const wasAfter = o.top > dragged.top
+      const shift = (j >= targetIndex ? step : 0) - (wasAfter ? step : 0)
+      o.row.style.transform = shift ? `translateY(${shift}px)` : ''
+    })
+  }
+
+  async function onUp() {
+    row.removeEventListener('pointermove', onMove)
+    row.removeEventListener('pointerup', onUp)
+    row.removeEventListener('pointercancel', onUp)
+    row.classList.remove('dragging')
+    if (!dragging) return
+
+    sources.insertBefore(row, others[targetIndex]?.row ?? null)
+    row.style.transform = ''
+    others.forEach((o) => { o.row.style.transform = '' })
+
+    const newOrder = Array.from(sources.querySelectorAll<HTMLElement>('.toggle-row')).map((r) => r.dataset.source!)
+    try {
+      await setSourceOrder(newOrder)
+    } catch {
+      // fall through — the re-render below still reflects the server's actual (unchanged) order
+    }
+    const refreshed = await currentMe()
+    if (refreshed) {
+      sources.innerHTML = sourcesHTML(refreshed)
+      attachSourcesListeners()
+    }
+  }
+
+  row.addEventListener('pointermove', onMove)
+  row.addEventListener('pointerup', onUp)
+  row.addEventListener('pointercancel', onUp)
 }
 
 async function loadLiveStatus(did: string) {

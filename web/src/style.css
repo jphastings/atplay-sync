@@ -286,6 +286,7 @@ button {
   background: var(--bg-surface);
   border-radius: 8px;
   padding: var(--space-md);
+  transition: transform 150ms var(--ease-out-quart); /* lets a sibling slide out of the way when a row is dragged past it */
 }
 
 .toggle-label { flex: 1; font-size: var(--text-sm); }
@@ -294,12 +295,20 @@ button {
 .steam-icon, .discord-icon { width: 1em; height: 1em; flex-shrink: 0; }
 .toggle-label-sub { display: block; color: var(--text-muted); font-size: var(--text-xs); }
 
-.toggle-row[draggable="true"] {
+.toggle-row[data-connected="true"] {
   cursor: grab;
-  transition: background var(--dur-micro) var(--ease-out-quart);
+  touch-action: none;
+  transition: background var(--dur-micro) var(--ease-out-quart), transform 150ms var(--ease-out-quart);
 }
-.toggle-row[draggable="true"]:hover { background: var(--bg-raised); }
-.toggle-row[draggable="true"]:active { cursor: grabbing; }
+.toggle-row[data-connected="true"]:hover { background: var(--bg-raised); }
+.toggle-row[data-connected="true"]:active { cursor: grabbing; }
+
+.toggle-row.dragging {
+  cursor: grabbing;
+  z-index: 2;
+  transition: none; /* direct 1:1 pointer tracking, no easing lag */
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.4), inset 0 0 0 1px var(--primary-bright);
+}
 
 .toggle {
   position: relative;
