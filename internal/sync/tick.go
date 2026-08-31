@@ -96,7 +96,7 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 			continue
 		}
 		playing := summary.GameID != ""
-		if err := UpdateSession(ctx, conn, reconciler, did, appdb.SteamSource, playing, summary.GameID, SessionExtra{}, now); err != nil {
+		if err := UpdateSession(ctx, conn, reconciler, did, appdb.SteamSource, playing, summary.GameID, summary.GameExtraInfo, SessionExtra{}, now); err != nil {
 			slog.Error("sync tick failed for account", "did", did, "err", err) // one account's failure shouldn't stop the rest
 		}
 	}

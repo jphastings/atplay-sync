@@ -264,6 +264,141 @@ func TestReconcile_NoExtra_PlayingEmpty(t *testing.T) {
 	}
 }
 
+func TestComputeDesired_ResolvedAndClaimsRkey_Synced(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
+	}}
+	_, outcomes, err := ComputeDesired(ctx, conn, resolver, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	if len(outcomes) != 1 || outcomes[0] != (SourceOutcome{Source: appdb.SteamSource, Status: OutcomeSynced, GameName: "Dota 2"}) {
+		t.Fatalf("got %+v, want a single synced Dota 2 outcome for steam", outcomes)
+	}
+}
+
+func TestComputeDesired_ResolvedButAlreadyClaimed_Duplicate(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)   // priority 0
+	appdb.SetEnabled(ctx, conn, did, appdb.DiscordSource, true) // priority 1
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
+	appdb.SetSessionStart(ctx, conn, did, appdb.DiscordSource, "570", time.Now()) // same game, lower priority
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
+	}}
+	_, outcomes, err := ComputeDesired(ctx, conn, resolver, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	want := map[SourceOutcome]bool{
+		{Source: appdb.SteamSource, Status: OutcomeSynced, GameName: "Dota 2"}:    true,
+		{Source: appdb.DiscordSource, Status: OutcomeDuplicate, GameName: "Dota 2"}: true,
+	}
+	if len(outcomes) != 2 || !want[outcomes[0]] || !want[outcomes[1]] {
+		t.Fatalf("got %+v, want steam synced + discord duplicate, both Dota 2", outcomes)
+	}
+}
+
+func TestComputeDesired_UnresolvedGame_UnknownWithRawName(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "999999", time.Now())
+	appdb.SetSessionRawName(ctx, conn, did, appdb.SteamSource, "Some Unreleased Game")
+
+	_, outcomes, err := ComputeDesired(ctx, conn, fakeResolver{}, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	if len(outcomes) != 1 || outcomes[0] != (SourceOutcome{Source: appdb.SteamSource, Status: OutcomeUnknown, GameName: "Some Unreleased Game"}) {
+		t.Fatalf("got %+v, want a single unknown outcome carrying the raw reported name", outcomes)
+	}
+}
+
+func TestComputeDesired_NoSession_AbsentFromOutcomes(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+
+	_, outcomes, err := ComputeDesired(ctx, conn, fakeResolver{}, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	if len(outcomes) != 0 {
+		t.Fatalf("got %+v, want none — nothing playing, source stays hidden", outcomes)
+	}
+}
+
+type fakeBroadcaster struct {
+	published map[string][]SourceOutcome
+}
+
+func (f *fakeBroadcaster) Publish(did string, outcomes []SourceOutcome) {
+	if f.published == nil {
+		f.published = map[string][]SourceOutcome{}
+	}
+	f.published[did] = outcomes
+}
+
+func TestReconcile_PublishesOutcomesToBroadcaster(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
+	}}
+	broadcaster := &fakeBroadcaster{}
+	r := &Reconciler{Conn: conn, Resolver: resolver, Writer: &fakeWriter{}, Broadcaster: broadcaster}
+
+	if err := r.Reconcile(ctx, did, time.Now()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	got := broadcaster.published[did]
+	if len(got) != 1 || got[0] != (SourceOutcome{Source: appdb.SteamSource, Status: OutcomeSynced, GameName: "Dota 2"}) {
+		t.Fatalf("got published=%+v, want a single synced Dota 2 outcome", got)
+	}
+}
+
+func TestUpdateSession_Playing_PersistsRawName(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+
+	r := &Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}
+	if err := UpdateSession(ctx, conn, r, did, appdb.SteamSource, true, "570", "Dota 2", SessionExtra{}, time.Now()); err != nil {
+		t.Fatalf("UpdateSession: %v", err)
+	}
+
+	row, err := appdb.GetSessionStart(ctx, conn, did, appdb.SteamSource)
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if row == nil || row.RawName != "Dota 2" {
+		t.Fatalf("got %+v, want RawName Dota 2", row)
+	}
+}
+
 func TestReconcile_UnresolvableGameURI_Skipped(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)

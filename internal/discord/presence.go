@@ -39,18 +39,25 @@ func (h *PresenceHandler) HandlePresenceUpdate(s *discordgo.Session, e *discordg
 		return
 	}
 
-	var gameKey string
+	var gameKey, rawName string
 	var extra appsync.SessionExtra
 	playing := false
 	for _, activity := range e.Activities {
 		if activity.Type != discordgo.ActivityTypeGame || activity.ApplicationID == "" {
 			continue
 		}
-		appID, ok := h.Games.SteamAppID(activity.ApplicationID)
-		if !ok {
-			continue
+		if appID, ok := h.Games.SteamAppID(activity.ApplicationID); ok {
+			gameKey = appID
+		} else {
+			// Not one of our known Steam-mapped games — record it anyway
+			// under a namespaced key rather than silently dropping it.
+			// "discord:"-prefixed keys are never valid Steam app IDs, so
+			// they never resolve via GetGameBySteamID: nothing published
+			// changes, but the settings page can now show this as an
+			// unmatched signal instead of it just vanishing.
+			gameKey = "discord:" + activity.ApplicationID
 		}
-		gameKey = appID
+		rawName = activity.Name
 		playing = true
 		extra.State = activity.State
 		extra.Details = activity.Details
@@ -67,7 +74,7 @@ func (h *PresenceHandler) HandlePresenceUpdate(s *discordgo.Session, e *discordg
 		break
 	}
 
-	if err := appsync.UpdateSession(ctx, h.Conn, h.Reconciler, claim.DID, appdb.DiscordSource, playing, gameKey, extra, time.Now()); err != nil {
+	if err := appsync.UpdateSession(ctx, h.Conn, h.Reconciler, claim.DID, appdb.DiscordSource, playing, gameKey, rawName, extra, time.Now()); err != nil {
 		slog.Error("discord presence update failed", "discord_id", e.User.ID, "err", err)
 	}
 }

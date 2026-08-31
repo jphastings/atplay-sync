@@ -93,12 +93,35 @@ func TestPresenceHandler_PlayingResolvableGame_UpdatesSession(t *testing.T) {
 
 	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
 		User:       &discordgo.User{ID: "690973862245957683"},
-		Activities: []*discordgo.Activity{{Type: discordgo.ActivityTypeGame, ApplicationID: "356875988589740042"}},
+		Activities: []*discordgo.Activity{{Type: discordgo.ActivityTypeGame, ApplicationID: "356875988589740042", Name: "Dota 2"}},
 	}, GuildID: guildID})
 
 	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource)
-	if err != nil || row == nil || row.GameKey != "570" {
-		t.Fatalf("GetSessionStart = %+v, %v, want game_key 570", row, err)
+	if err != nil || row == nil || row.GameKey != "570" || row.RawName != "Dota 2" {
+		t.Fatalf("GetSessionStart = %+v, %v, want game_key 570 and RawName Dota 2", row, err)
+	}
+}
+
+func TestPresenceHandler_UnmatchedActivity_RecordsNamespacedKeyAndRawName(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedDiscordUser(t, conn, "did:plc:a", "690973862245957683")
+
+	// Games index has no mapping for this application_id at all — unlike
+	// the resolvable-game test above.
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
+
+	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
+		User:       &discordgo.User{ID: "690973862245957683"},
+		Activities: []*discordgo.Activity{{Type: discordgo.ActivityTypeGame, ApplicationID: "999999999999999999", Name: "Some Indie Game"}},
+	}, GuildID: guildID})
+
+	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", appdb.DiscordSource)
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if row == nil || row.GameKey != "discord:999999999999999999" || row.RawName != "Some Indie Game" {
+		t.Fatalf("got %+v, want a namespaced game_key and the raw activity name recorded instead of being silently dropped", row)
 	}
 }
 

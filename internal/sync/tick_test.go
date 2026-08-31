@@ -143,6 +143,26 @@ func TestRunTick_PlayingUnresolvableGame_RecordsSessionButDeletesRecord(t *testi
 	}
 }
 
+func TestRunTick_PlayingGame_PersistsRawName(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedEligibleUser(t, conn, "did:plc:a", "765")
+
+	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765", GameID: "999999", GameExtraInfo: "Some Unreleased Game"}}}
+	writer := &fakeWriter{}
+
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, steam.NewBudget(1000), time.Now()); err != nil {
+		t.Fatalf("RunTick: %v", err)
+	}
+	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if row == nil || row.RawName != "Some Unreleased Game" {
+		t.Fatalf("got %+v, want RawName from Steam's GameExtraInfo, even for an unresolvable app", row)
+	}
+}
+
 func TestRunTick_SteamOmitsAccount_SkipsWithoutDeleteOrSessionReset(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)

@@ -17,13 +17,18 @@ type SessionStart struct {
 	// internal/sync.Reconcile. Kept as a plain string here so internal/db
 	// stays agnostic to its shape.
 	Extra string
+	// RawName is the human-readable name the source itself reported —
+	// Steam's GameExtraInfo, Discord's Activity.Name — captured even when
+	// GameKey never resolves to a cartridge game, so an unmatched session
+	// can still be shown to the user (rather than just silently dropped).
+	RawName string
 }
 
 func GetSessionStart(ctx context.Context, conn *sql.DB, did, source string) (*SessionStart, error) {
 	var s SessionStart
 	var startedAt string
-	err := conn.QueryRowContext(ctx, `SELECT game_key, started_at, extra FROM session_starts WHERE did = ? AND source = ?`, did, source).
-		Scan(&s.GameKey, &startedAt, &s.Extra)
+	err := conn.QueryRowContext(ctx, `SELECT game_key, started_at, extra, raw_name FROM session_starts WHERE did = ? AND source = ?`, did, source).
+		Scan(&s.GameKey, &startedAt, &s.Extra, &s.RawName)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -50,6 +55,15 @@ func SetSessionStart(ctx context.Context, conn *sql.DB, did, source, gameKey str
 // call site) don't need to thread an always-empty argument through.
 func SetSessionExtra(ctx context.Context, conn *sql.DB, did, source, extra string) error {
 	_, err := conn.ExecContext(ctx, `UPDATE session_starts SET extra = ? WHERE did = ? AND source = ?`, extra, did, source)
+	return err
+}
+
+// SetSessionRawName updates a session_starts row's raw reported name. Kept
+// separate from SetSessionStart for the same reason as SetSessionExtra: most
+// existing callers/tests never have this data and shouldn't need to thread
+// an always-empty argument through.
+func SetSessionRawName(ctx context.Context, conn *sql.DB, did, source, rawName string) error {
+	_, err := conn.ExecContext(ctx, `UPDATE session_starts SET raw_name = ? WHERE did = ? AND source = ?`, rawName, did, source)
 	return err
 }
 

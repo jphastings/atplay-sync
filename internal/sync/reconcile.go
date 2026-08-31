@@ -15,46 +15,81 @@ type Reconciler struct {
 	Conn     *sql.DB
 	Resolver GameResolver
 	Writer   RecordWriter
+	// Broadcaster, if set, is pushed a did's freshly computed per-source
+	// outcomes at the end of every Reconcile — e.g. a live WS hub feeding
+	// the settings page's sync-state indicator. Optional: nil is fine
+	// (every existing caller/test that doesn't need live-push leaves it
+	// unset), and Publish on a did with no subscribers is expected to be a
+	// cheap no-op.
+	Broadcaster Broadcaster
 }
 
 var _ appdb.Reconciler = (*Reconciler)(nil)
 
-// Reconcile computes what should be live for did — one status record per
-// distinct game currently being played across all enabled sources, keyed by
-// that game's own rkey — and diffs it against what's actually live on the
-// PDS, writing new/changed entries and deleting anything no longer desired.
-//
-// Two sources reporting the same game resolve to the same rkey: the
-// priority walk below lets only the first (highest-priority) source to
-// claim a given rkey populate it, so same-game conflicts resolve exactly
-// like the old single-record design did, just scoped per game instead of
-// per account. A game switch (rkey A -> rkey B) needs no special case: A
-// simply stops appearing in `desired` (so it's deleted) while B appears (so
-// it's created).
-//
-// Call this after any change to any source's session_starts row, after
-// enable/disable, after a priority reorder, and after a claim
-// invalidation — nothing else should call Writer.PutStatus/DeleteStatus.
-func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
-	sources, err := appdb.ListEnabledSourcesByPriority(ctx, r.Conn, did)
+// SourceOutcome is what one enabled+connected source is currently reporting,
+// from the settings page's point of view — distinct from ActorStatus, which
+// is what actually gets published. A source absent from Reconcile/
+// ComputeDesired's outcome slice has nothing to show (hidden): no session,
+// or the source is disabled/disconnected.
+type SourceOutcome struct {
+	Source   string `json:"source"`             // appdb.SteamSource / appdb.DiscordSource
+	Status   string `json:"status"`             // OutcomeSynced / OutcomeDuplicate / OutcomeUnknown
+	GameName string `json:"gameName,omitempty"` // resolved game name (synced/duplicate), or the source's own raw reported name (unknown)
+}
+
+const (
+	// OutcomeSynced: this source's session resolved to a game, and it was
+	// the highest-priority source to claim that game's rkey — its report
+	// is what created/maintains the live games.atmosphere.status record.
+	OutcomeSynced = "synced"
+	// OutcomeDuplicate: this source's session resolved to the same game as
+	// a higher-priority source, so it's a valid match but isn't the one
+	// driving the published record.
+	OutcomeDuplicate = "duplicate"
+	// OutcomeUnknown: this source has a session, but its reported game
+	// never resolved to a cartridge game — nothing is or can be published
+	// for it, but the raw reported name is still worth showing.
+	OutcomeUnknown = "unknown"
+)
+
+// Broadcaster pushes a did's just-computed sync outcomes out to whatever's
+// listening live (see internal/livestate.Hub). Defined here, not in the
+// consumer package, so Reconciler can depend on it without internal/sync
+// needing to know anything about WebSockets or HTTP.
+type Broadcaster interface {
+	Publish(did string, outcomes []SourceOutcome)
+}
+
+// ComputeDesired walks did's enabled sources in priority order — same walk
+// Reconcile has always done — and returns both what it always returned
+// (desired, for the PDS diff/write below) and, alongside it, a per-source
+// classification (outcomes) of what each source is doing with what it's
+// reporting: driving the published record (synced), a valid match superseded
+// by a higher-priority source (duplicate), or unresolvable (unknown, with
+// the source's own raw reported name since there's no cartridge game name to
+// use instead). A source with no active session is simply absent from both.
+func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, did string, now time.Time) (map[string]ActorStatus, []SourceOutcome, error) {
+	sources, err := appdb.ListEnabledSourcesByPriority(ctx, conn, did)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	desired := map[string]ActorStatus{}
+	var outcomes []SourceOutcome
 	for _, source := range sources {
-		row, err := appdb.GetSessionStart(ctx, r.Conn, did, source)
+		row, err := appdb.GetSessionStart(ctx, conn, did, source)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if row == nil {
 			continue
 		}
-		game, err := r.Resolver.GetGameBySteamID(ctx, row.GameKey)
+		game, err := resolver.GetGameBySteamID(ctx, row.GameKey)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		if game == nil {
+			outcomes = append(outcomes, SourceOutcome{Source: source, Status: OutcomeUnknown, GameName: row.RawName})
 			continue
 		}
 		_, _, rkey, ok := parseAtURI(game.URI)
@@ -62,6 +97,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 			continue // malformed game URI — shouldn't happen from cartridge, but never publish garbage
 		}
 		if _, claimed := desired[rkey]; claimed {
+			outcomes = append(outcomes, SourceOutcome{Source: source, Status: OutcomeDuplicate, GameName: game.Name})
 			continue // a higher-priority source already claimed this game
 		}
 		status := ActorStatus{
@@ -83,6 +119,34 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 			}
 		}
 		desired[rkey] = status
+		outcomes = append(outcomes, SourceOutcome{Source: source, Status: OutcomeSynced, GameName: game.Name})
+	}
+	return desired, outcomes, nil
+}
+
+// Reconcile computes what should be live for did — one status record per
+// distinct game currently being played across all enabled sources, keyed by
+// that game's own rkey — and diffs it against what's actually live on the
+// PDS, writing new/changed entries and deleting anything no longer desired.
+//
+// Two sources reporting the same game resolve to the same rkey: the
+// priority walk below lets only the first (highest-priority) source to
+// claim a given rkey populate it, so same-game conflicts resolve exactly
+// like the old single-record design did, just scoped per game instead of
+// per account. A game switch (rkey A -> rkey B) needs no special case: A
+// simply stops appearing in `desired` (so it's deleted) while B appears (so
+// it's created).
+//
+// Call this after any change to any source's session_starts row, after
+// enable/disable, after a priority reorder, and after a claim
+// invalidation — nothing else should call Writer.PutStatus/DeleteStatus.
+func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
+	desired, outcomes, err := ComputeDesired(ctx, r.Conn, r.Resolver, did, now)
+	if err != nil {
+		return err
+	}
+	if r.Broadcaster != nil {
+		r.Broadcaster.Publish(did, outcomes)
 	}
 
 	live, err := r.Writer.ListStatuses(ctx, did)
@@ -114,12 +178,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) e
 // tick and Discord's presence handler both call this — it's the only
 // place either one touches session_starts.
 //
+// rawName is the human-readable name the source itself reported (Steam's
+// GameExtraInfo, Discord's Activity.Name) — persisted even when gameKey
+// never resolves to a cartridge game, so ComputeDesired can still show an
+// unmatched session's name instead of just its opaque key.
+//
 // extra is opaque per-source metadata (state/details/party — only Discord
 // ever populates it; Steam passes the zero value) persisted alongside the
 // session so Reconcile can read it back later, since Reconcile re-reads
 // every enabled source's row fresh rather than receiving this call's data
 // directly.
-func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, did, source string, playing bool, gameKey string, extra SessionExtra, now time.Time) error {
+func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, did, source string, playing bool, gameKey, rawName string, extra SessionExtra, now time.Time) error {
 	var prev *SessionStart
 	row, err := appdb.GetSessionStart(ctx, conn, did, source)
 	if err != nil {
@@ -137,6 +206,9 @@ func UpdateSession(ctx context.Context, conn *sql.DB, reconciler *Reconciler, di
 		}
 	case ActionWrite:
 		if err := appdb.SetSessionStart(ctx, conn, did, source, decision.GameKey, decision.CreatedAt); err != nil {
+			return err
+		}
+		if err := appdb.SetSessionRawName(ctx, conn, did, source, rawName); err != nil {
 			return err
 		}
 		extraJSON, err := json.Marshal(extra)

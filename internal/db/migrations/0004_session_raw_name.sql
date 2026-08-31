@@ -1,0 +1,1 @@
+ALTER TABLE session_starts ADD COLUMN raw_name TEXT NOT NULL DEFAULT '';

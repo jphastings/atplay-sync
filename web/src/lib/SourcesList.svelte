@@ -51,7 +51,7 @@
       {#each connectedItems as item (item.id)}
         <div animate:flip={{ duration: 200 }}>
           {#if appState.me}
-            <SourceRow source={item.id} me={appState.me} onToggle={toggleSource} />
+            <SourceRow source={item.id} me={appState.me} onToggle={toggleSource} outcome={appState.sourceOutcomes[item.id]} />
           {/if}
         </div>
       {/each}
@@ -59,7 +59,7 @@
   {/if}
   {#each disconnectedSources as source (source)}
     {#if appState.me}
-      <SourceRow {source} me={appState.me} onToggle={toggleSource} />
+      <SourceRow {source} me={appState.me} onToggle={toggleSource} outcome={appState.sourceOutcomes[source]} />
     {/if}
   {/each}
 </section>

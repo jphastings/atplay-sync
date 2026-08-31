@@ -26,6 +26,7 @@ import (
 	"github.com/jphastings/game-status/internal/discord"
 	"github.com/jphastings/game-status/internal/jetstream"
 	"github.com/jphastings/game-status/internal/keytrace"
+	"github.com/jphastings/game-status/internal/livestate"
 	"github.com/jphastings/game-status/internal/steam"
 	"github.com/jphastings/game-status/internal/sync"
 	"github.com/jphastings/game-status/internal/webauth"
@@ -124,7 +125,8 @@ func main() {
 	}()
 
 	writer := &sync.ATProtoWriter{Resumer: resumer, Conn: conn, Dir: dir}
-	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer}
+	liveHub := livestate.NewHub()
+	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer, Broadcaster: liveHub}
 
 	presenceHandler := &discord.PresenceHandler{Conn: conn, GuildID: cfg.DiscordGuildID, Games: gameIndex, Reconciler: reconciler}
 	discordGateway.Session.AddHandler(presenceHandler.HandlePresenceUpdate)
@@ -219,6 +221,9 @@ func main() {
 
 	syncHandlers := &api.SyncHandlers{Conn: conn, Reconciler: reconciler}
 	mux.HandleFunc("POST /api/sync/order", oauthHandlers.RequireAuth(syncHandlers.SetOrder))
+
+	liveHandlers := &api.LiveHandlers{Conn: conn, Resolver: cartridgeClient, Hub: liveHub}
+	mux.HandleFunc("GET /api/sync/live", oauthHandlers.RequireAuth(liveHandlers.Serve))
 
 	distFS, err := fs.Sub(frontendFS, "web/dist")
 	if err != nil {

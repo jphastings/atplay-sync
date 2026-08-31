@@ -2,6 +2,7 @@
 import { getMe, recheckClaim, setSteamEnabled, recheckDiscordClaim, setDiscordEnabled, setSourceOrder, type Me } from './api'
 import { resolveLiveStatuses, resolveHandle, type LiveStatus } from './atproto'
 import { mockMe, mockLiveStatuses } from './devmock'
+import type { SourceOutcome } from './synclive'
 
 export const KNOWN_SOURCES = ['steam', 'discord'] as const
 export type Source = (typeof KNOWN_SOURCES)[number]
@@ -18,11 +19,22 @@ export const appState = $state<{
   me: Me | null | undefined
   liveStatuses: LiveStatus[] | 'error' | undefined
   handle: string | undefined
+  sourceOutcomes: Partial<Record<Source, SourceOutcome>>
 }>({
   me: undefined,
   liveStatuses: undefined,
   handle: undefined,
+  sourceOutcomes: {},
 })
+
+// Replaces the whole map on every push — the server always sends the full
+// current set (see internal/livestate.Hub), never a diff, so there's
+// nothing to merge.
+export function applySourceOutcomes(outcomes: SourceOutcome[]): void {
+  const bySource: Partial<Record<Source, SourceOutcome>> = {}
+  for (const outcome of outcomes) bySource[outcome.source as Source] = outcome
+  appState.sourceOutcomes = bySource
+}
 
 // mockMe()/mockLiveStatuses() return `undefined` when `?mock=` isn't set
 // (meaning "no override, hit the real API") — distinct from a fixture that

@@ -1,7 +1,8 @@
 <!-- web/src/App.svelte -->
 <script lang="ts">
-  import { appState, loadMe, loadLiveStatuses } from './state.svelte'
+  import { appState, loadMe, loadLiveStatuses, applySourceOutcomes } from './state.svelte'
   import { watchOwnStatus } from './jetstream'
+  import { watchSyncLive } from './synclive'
   import SignIn from './lib/SignIn.svelte'
   import SignedIn from './lib/SignedIn.svelte'
 
@@ -13,6 +14,11 @@
     if (!appState.me) return
     loadLiveStatuses()
     return watchOwnStatus(appState.me.did, () => loadLiveStatuses())
+  })
+
+  $effect(() => {
+    if (!appState.me) return
+    return watchSyncLive(applySourceOutcomes)
   })
 </script>
 

@@ -67,6 +67,42 @@ func TestGetSessionStart_ExtraDefaultsEmpty(t *testing.T) {
 	}
 }
 
+func TestSetSessionRawName_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+
+	if err := SetSessionStart(ctx, conn, "did:plc:test", "steam", "app-123", time.Now()); err != nil {
+		t.Fatalf("SetSessionStart: %v", err)
+	}
+	if err := SetSessionRawName(ctx, conn, "did:plc:test", "steam", "Half-Life 3"); err != nil {
+		t.Fatalf("SetSessionRawName: %v", err)
+	}
+
+	s, err := GetSessionStart(ctx, conn, "did:plc:test", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if s == nil || s.RawName != "Half-Life 3" {
+		t.Fatalf("got %+v, want RawName to round-trip", s)
+	}
+}
+
+func TestGetSessionStart_RawNameDefaultsEmpty(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+
+	if err := SetSessionStart(ctx, conn, "did:plc:test", "steam", "app-123", time.Now()); err != nil {
+		t.Fatalf("SetSessionStart: %v", err)
+	}
+	s, err := GetSessionStart(ctx, conn, "did:plc:test", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if s == nil || s.RawName != "" {
+		t.Fatalf("got %+v, want empty RawName (never set)", s)
+	}
+}
+
 func TestGetSessionStart_MissingReturnsNil(t *testing.T) {
 	conn := openTestDB(t)
 	s, err := GetSessionStart(context.Background(), conn, "did:plc:nobody", "steam")

@@ -26,6 +26,12 @@
 
   --border-dim: oklch(45% 0.08 var(--hue) / 0.5);
 
+  /* Status colors deliberately sit outside --hue — they need to read as
+     "green/amber/red" regardless of the app's magenta theme. */
+  --status-synced: oklch(70% 0.17 145);
+  --status-duplicate: oklch(75% 0.15 80);
+  --status-unknown: oklch(65% 0.22 25);
+
   --space-xs: 4px; --space-sm: 8px; --space-md: 16px; --space-lg: 24px; --space-xl: 32px; --space-2xl: 48px; --space-3xl: 64px;
 
   --text-xs: 0.75rem; --text-sm: 0.875rem; --text-base: 1rem; --text-lg: 1.25rem; --text-xl: 1.75rem;
@@ -356,6 +362,34 @@ button {
 .toggle input:disabled ~ .toggle-track { opacity: 0.5; }
 .toggle input:disabled ~ .toggle-thumb { opacity: 0.5; }
 .toggle input:focus-visible ~ .toggle-track { outline: 2px solid var(--primary-bright); outline-offset: 2px; }
+
+/* What a sync channel is reporting right now — synced (driving the
+   published record), duplicate (a valid match superseded by a
+   higher-priority source), or unknown (unmatched; name in a popover). */
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  cursor: default;
+}
+.sync-dot[data-status="synced"] { background: var(--status-synced); box-shadow: 0 0 6px var(--status-synced); }
+.sync-dot[data-status="duplicate"] { background: var(--status-duplicate); box-shadow: 0 0 6px var(--status-duplicate); }
+.sync-dot[data-status="unknown"] { background: var(--status-unknown); box-shadow: 0 0 6px var(--status-unknown); cursor: pointer; }
+button.sync-dot:focus-visible { outline: 2px solid var(--status-unknown); outline-offset: 2px; }
+
+.sync-popover {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-xs);
+  max-width: 16rem;
+}
+.sync-popover:popover-open { margin: auto; } /* center the browser's default anchor-less placement */
 
 /* ---------- Utility row ---------- */
 
