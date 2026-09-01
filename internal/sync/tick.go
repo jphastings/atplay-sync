@@ -95,8 +95,18 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 			slog.Warn("steam omitted account from response, skipping this tick", "steam_id", steamID, "did", did)
 			continue
 		}
-		playing := summary.GameID != ""
-		if err := UpdateSession(ctx, conn, reconciler, did, appdb.SteamSource, playing, summary.GameID, summary.GameExtraInfo, SessionExtra{}, now); err != nil {
+		gameKey := summary.GameID
+		if gameKey == "" && summary.GameExtraInfo != "" {
+			// Steam reports some non-Steam shortcuts by name only, with no
+			// app id at all. Namespaced the same way Discord's unmatched
+			// activity is (see internal/discord/presence.go): it can never
+			// collide with a real app id, so it never resolves via
+			// cartridge and nothing new gets published — it just surfaces
+			// as an unmatched signal instead of looking like "not playing".
+			gameKey = "steam-shortcut:" + summary.GameExtraInfo
+		}
+		playing := gameKey != ""
+		if err := UpdateSession(ctx, conn, reconciler, did, appdb.SteamSource, playing, gameKey, summary.GameExtraInfo, SessionExtra{}, now); err != nil {
 			slog.Error("sync tick failed for account", "did", did, "err", err) // one account's failure shouldn't stop the rest
 		}
 	}

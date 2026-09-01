@@ -163,6 +163,32 @@ func TestRunTick_PlayingGame_PersistsRawName(t *testing.T) {
 	}
 }
 
+func TestRunTick_NameWithoutAppID_RecordsUnresolvableSession(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedEligibleUser(t, conn, "did:plc:a", "765")
+
+	// Steam reports some non-Steam shortcuts by name only, with no app id
+	// (a Steam Deck Game Mode shortcut, say).
+	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765", GameExtraInfo: "Discord"}}}
+	writer := &fakeWriter{}
+
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, writer, steam.NewBudget(1000), time.Now()); err != nil {
+		t.Fatalf("RunTick: %v", err)
+	}
+
+	row, err := appdb.GetSessionStart(ctx, conn, "did:plc:a", "steam")
+	if err != nil {
+		t.Fatalf("GetSessionStart: %v", err)
+	}
+	if row == nil || row.GameKey != "steam-shortcut:Discord" || row.RawName != "Discord" {
+		t.Fatalf("got %+v, want a namespaced session recorded under the reported name rather than treated as not playing", row)
+	}
+	if len(writer.puts) != 0 {
+		t.Fatalf("got puts=%+v, want none — a name with no app id can never resolve to a game", writer.puts)
+	}
+}
+
 func TestRunTick_SteamOmitsAccount_SkipsWithoutDeleteOrSessionReset(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
