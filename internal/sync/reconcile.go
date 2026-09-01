@@ -40,6 +40,14 @@ type Reconciler struct {
 
 var _ appdb.Reconciler = (*Reconciler)(nil)
 
+// reconcileTimeout bounds one Reconcile's work — chiefly its PDS calls,
+// which have no timeout of their own and are reached with a context that
+// carries no deadline (every caller passes context.Background()). Since
+// Reconcile holds mu for its whole body, an unanswered PDS connection would
+// otherwise hold that lock forever and wedge every other account's sync
+// behind it. Overridable for tests, like steam.Client.BaseURL.
+var reconcileTimeout = 30 * time.Second
+
 // SourceOutcome is what one enabled+connected source is currently reporting,
 // from the settings page's point of view — distinct from ActorStatus, which
 // is what actually gets published. A source absent from Reconcile/
@@ -159,6 +167,12 @@ func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, di
 func (r *Reconciler) Reconcile(ctx context.Context, did string, now time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// Started after the lock, not before: a call that waited its turn gets
+	// its own full budget to work in, rather than being timed out by the
+	// queue ahead of it.
+	ctx, cancel := context.WithTimeout(ctx, reconcileTimeout)
+	defer cancel()
 
 	desired, outcomes, err := ComputeDesired(ctx, r.Conn, r.Resolver, did, now)
 	if err != nil {

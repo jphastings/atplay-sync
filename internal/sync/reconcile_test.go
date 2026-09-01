@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -457,6 +458,36 @@ func TestReconcile_SerializedAcrossConcurrentCallsForSameDID(t *testing.T) {
 
 	if writer.maxActive > 1 {
 		t.Fatalf("got max concurrent Reconcile executions = %d, want 1 (not serialized)", writer.maxActive)
+	}
+}
+
+// blockingWriter stands in for a PDS that accepts the connection and then
+// never answers — the case that, before Reconcile bounded its own context,
+// could hold the reconcile lock indefinitely and wedge every other account's
+// sync behind it.
+type blockingWriter struct{ fakeWriter }
+
+func (w *blockingWriter) ListStatuses(ctx context.Context, did string) ([]StatusEntry, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestReconcile_HungPDSCall_TimesOutRatherThanBlockingForever(t *testing.T) {
+	restore := reconcileTimeout
+	reconcileTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { reconcileTimeout = restore })
+
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+
+	r := &Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &blockingWriter{}}
+
+	err := r.Reconcile(ctx, did, time.Now())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Reconcile err = %v, want it to wrap context.DeadlineExceeded", err)
 	}
 }
 
