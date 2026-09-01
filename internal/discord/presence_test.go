@@ -316,3 +316,28 @@ func TestHandleGuildMemberRemove_InvalidatesDiscordClaim(t *testing.T) {
 		t.Fatalf("IsEnabled = %v, %v, want false", enabled, err)
 	}
 }
+
+func TestPresenceHandler_RecordsOnlineStateFromPresenceStatus(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedDiscordUser(t, conn, "did:plc:a", "690973862245957683")
+
+	h := &PresenceHandler{Conn: conn, GuildID: guildID, Games: NewGameIndex(), Reconciler: &appsync.Reconciler{Conn: conn, Resolver: fakeResolver{}, Writer: &fakeWriter{}}}
+
+	// Idle counts as online — they're connected, just not at the keyboard.
+	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
+		User: &discordgo.User{ID: "690973862245957683"}, Status: discordgo.StatusIdle,
+	}, GuildID: guildID})
+	online, err := appdb.IsSourceOnline(ctx, conn, "did:plc:a", appdb.DiscordSource)
+	if err != nil || !online {
+		t.Fatalf("IsSourceOnline (idle) = %v, %v, want true", online, err)
+	}
+
+	h.HandlePresenceUpdate(nil, &discordgo.PresenceUpdate{Presence: discordgo.Presence{
+		User: &discordgo.User{ID: "690973862245957683"}, Status: discordgo.StatusOffline,
+	}, GuildID: guildID})
+	online, err = appdb.IsSourceOnline(ctx, conn, "did:plc:a", appdb.DiscordSource)
+	if err != nil || online {
+		t.Fatalf("IsSourceOnline (offline) = %v, %v, want false", online, err)
+	}
+}

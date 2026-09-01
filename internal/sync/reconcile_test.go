@@ -290,32 +290,6 @@ func TestComputeDesired_ResolvedAndClaimsRkey_Synced(t *testing.T) {
 	}
 }
 
-func TestComputeDesired_ResolvedButAlreadyClaimed_Duplicate(t *testing.T) {
-	ctx := context.Background()
-	conn := openTestDB(t)
-	did := "did:plc:a"
-	appdb.UpsertUser(ctx, conn, did)
-	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)   // priority 0
-	appdb.SetEnabled(ctx, conn, did, appdb.DiscordSource, true) // priority 1
-	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
-	appdb.SetSessionStart(ctx, conn, did, appdb.DiscordSource, "570", time.Now()) // same game, lower priority
-
-	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
-		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
-	}}
-	_, outcomes, err := ComputeDesired(ctx, conn, resolver, did, time.Now())
-	if err != nil {
-		t.Fatalf("ComputeDesired: %v", err)
-	}
-	want := map[SourceOutcome]bool{
-		{Source: appdb.SteamSource, Status: OutcomeSynced, GameName: "Dota 2"}:    true,
-		{Source: appdb.DiscordSource, Status: OutcomeDuplicate, GameName: "Dota 2"}: true,
-	}
-	if len(outcomes) != 2 || !want[outcomes[0]] || !want[outcomes[1]] {
-		t.Fatalf("got %+v, want steam synced + discord duplicate, both Dota 2", outcomes)
-	}
-}
-
 func TestComputeDesired_UnresolvedGame_UnknownWithRawName(t *testing.T) {
 	ctx := context.Background()
 	conn := openTestDB(t)
@@ -331,22 +305,6 @@ func TestComputeDesired_UnresolvedGame_UnknownWithRawName(t *testing.T) {
 	}
 	if len(outcomes) != 1 || outcomes[0] != (SourceOutcome{Source: appdb.SteamSource, Status: OutcomeUnknown, GameName: "Some Unreleased Game"}) {
 		t.Fatalf("got %+v, want a single unknown outcome carrying the raw reported name", outcomes)
-	}
-}
-
-func TestComputeDesired_NoSession_AbsentFromOutcomes(t *testing.T) {
-	ctx := context.Background()
-	conn := openTestDB(t)
-	did := "did:plc:a"
-	appdb.UpsertUser(ctx, conn, did)
-	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
-
-	_, outcomes, err := ComputeDesired(ctx, conn, fakeResolver{}, did, time.Now())
-	if err != nil {
-		t.Fatalf("ComputeDesired: %v", err)
-	}
-	if len(outcomes) != 0 {
-		t.Fatalf("got %+v, want none — nothing playing, source stays hidden", outcomes)
 	}
 }
 
@@ -508,5 +466,84 @@ func TestReconcile_UnresolvableGameURI_Skipped(t *testing.T) {
 	}
 	if len(writer.puts) != 0 {
 		t.Fatalf("got puts=%+v, want none — a malformed game URI can't be published", writer.puts)
+	}
+}
+
+func TestComputeDesired_OnlineWithNoSession_Idle(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+	appdb.SetSourceOnline(ctx, conn, did, appdb.SteamSource, true)
+
+	_, outcomes, err := ComputeDesired(ctx, conn, fakeResolver{}, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	if len(outcomes) != 1 || outcomes[0] != (SourceOutcome{Source: appdb.SteamSource, Status: OutcomeIdle}) {
+		t.Fatalf("got %+v, want steam idle — online, nothing running", outcomes)
+	}
+}
+
+func TestComputeDesired_OfflineWithNoSession_Offline(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)
+
+	_, outcomes, err := ComputeDesired(ctx, conn, fakeResolver{}, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	if len(outcomes) != 1 || outcomes[0] != (SourceOutcome{Source: appdb.SteamSource, Status: OutcomeOffline}) {
+		t.Fatalf("got %+v, want steam offline", outcomes)
+	}
+}
+
+func TestComputeDesired_SameGameTwoSources_MatchedAndSynced(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, true)   // priority 0
+	appdb.SetEnabled(ctx, conn, did, appdb.DiscordSource, true) // priority 1
+	appdb.SetSessionStart(ctx, conn, did, appdb.SteamSource, "570", time.Now())
+	appdb.SetSessionStart(ctx, conn, did, appdb.DiscordSource, "570", time.Now())
+
+	resolver := fakeResolver{games: map[string]*appdb.CachedGame{
+		"570": {URI: "at://cartridge/games.gamesgamesgamesgames.game/dota2", Name: "Dota 2"},
+	}}
+	_, outcomes, err := ComputeDesired(ctx, conn, resolver, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	// Both understand the game; only the higher-priority one is publishing.
+	want := map[SourceOutcome]bool{
+		{Source: appdb.SteamSource, Status: OutcomeSynced, GameName: "Dota 2"}:   true,
+		{Source: appdb.DiscordSource, Status: OutcomeMatched, GameName: "Dota 2"}: true,
+	}
+	if len(outcomes) != 2 || !want[outcomes[0]] || !want[outcomes[1]] {
+		t.Fatalf("got %+v, want steam synced + discord matched", outcomes)
+	}
+}
+
+func TestComputeDesired_DisabledSource_AbsentFromOutcomes(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	did := "did:plc:a"
+	appdb.UpsertUser(ctx, conn, did)
+	appdb.SetEnabled(ctx, conn, did, appdb.SteamSource, false)
+	appdb.SetSourceOnline(ctx, conn, did, appdb.SteamSource, true)
+
+	_, outcomes, err := ComputeDesired(ctx, conn, fakeResolver{}, did, time.Now())
+	if err != nil {
+		t.Fatalf("ComputeDesired: %v", err)
+	}
+	// Online or not, a source the user has switched off says nothing at all
+	// — that's the difference between no dot and an offline dot.
+	if len(outcomes) != 0 {
+		t.Fatalf("got %+v, want none — a disabled source is hidden entirely", outcomes)
 	}
 }

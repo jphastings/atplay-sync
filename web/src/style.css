@@ -29,7 +29,7 @@
   /* Status colors deliberately sit outside --hue — they need to read as
      "green/amber/red" regardless of the app's magenta theme. */
   --status-synced: oklch(70% 0.17 145);
-  --status-duplicate: oklch(75% 0.15 80);
+  --status-idle: oklch(75% 0.15 80);
   --status-unknown: oklch(65% 0.22 25);
 
   --space-xs: 4px; --space-sm: 8px; --space-md: 16px; --space-lg: 24px; --space-xl: 32px; --space-2xl: 48px; --space-3xl: 64px;
@@ -384,10 +384,17 @@ button {
   cursor: default;
   margin-left: var(--space-sm); /* on top of .toggle-label-title's own gap, so the dot reads as separate from the label text */
 }
-.sync-dot[data-status="synced"] { background: var(--status-synced); box-shadow: 0 0 6px var(--status-synced); }
-.sync-dot[data-status="duplicate"] { background: var(--status-duplicate); box-shadow: 0 0 6px var(--status-duplicate); }
+.sync-dot[data-status="offline"] { background: none; border: 1.5px solid var(--text-muted); }
+.sync-dot[data-status="idle"] { background: var(--status-idle); box-shadow: 0 0 6px var(--status-idle); }
 .sync-dot[data-status="unknown"] { background: var(--status-unknown); box-shadow: 0 0 6px var(--status-unknown); cursor: pointer; }
-.sync-dot[data-status="idle"] { background: none; border: 1.5px solid var(--text-muted); }
+.sync-dot[data-status="matched"] { background: var(--status-synced); box-shadow: 0 0 6px var(--status-synced); }
+/* Same green as a plain match — the pulse is the whole difference: this is
+   the source actually driving the published record. Matches .live-dot. */
+.sync-dot[data-status="synced"] {
+  background: var(--status-synced);
+  box-shadow: 0 0 8px var(--status-synced);
+  animation: pulse 1.8s ease-in-out infinite;
+}
 button.sync-dot:focus-visible { outline: 2px solid var(--status-unknown); outline-offset: 2px; }
 
 /* CSS-anchored to the dot that opened it (anchor-name set inline per row,
@@ -449,7 +456,7 @@ button.sync-dot:focus-visible { outline: 2px solid var(--status-unknown); outlin
   .marquee-title, .signin-form, .hero, .consent-zone, .utility-row {
     animation: fade-in 200ms ease-out both;
   }
-  .live-dot, .hero-cover--loading { animation: none; }
+  .live-dot, .hero-cover--loading, .sync-dot { animation: none; }
 }
 
 @keyframes fade-in {

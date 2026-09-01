@@ -26,6 +26,16 @@
   let enabled = $state(isEnabledFn(me, source))
   let unknownPopoverId = $derived(`${source}-unknown-popover`)
 
+  const DOT_TITLES: Record<string, string> = {
+    offline: 'Not online',
+    idle: 'Online, not playing anything',
+    matched: 'Playing, but another source is publishing this game',
+    synced: 'Publishing this game',
+  }
+  let dotTitle = $derived(
+    outcome ? [DOT_TITLES[outcome.status], outcome.gameName].filter(Boolean).join(' — ') : '',
+  )
+
   // Re-sync if `me` changes out from under us (e.g. a fresh fetch after a
   // reorder round-trips) without clobbering an in-flight optimistic toggle.
   $effect(() => {
@@ -66,9 +76,11 @@
         ></button>
         <div id={unknownPopoverId} popover class="sync-popover" style={`position-anchor: --sync-dot-${source}`}>{outcome.gameName || 'Unrecognized activity'}</div>
       {:else if outcome}
-        <span class="sync-dot" data-status={outcome.status} title={outcome.gameName}></span>
+        <span class="sync-dot" data-status={outcome.status} title={dotTitle}></span>
       {:else if enabled}
-        <span class="sync-dot" data-status="idle" title="Nothing currently reported"></span>
+        <!-- Until the first live push lands, we can't know which — show the
+             quietest state rather than guessing at a signal. -->
+        <span class="sync-dot" data-status="offline"></span>
       {/if}
     </span>
     <span class="toggle-label-sub">

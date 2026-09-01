@@ -105,3 +105,27 @@ func equalInts(a, b []int) bool {
 	}
 	return true
 }
+
+func TestGetPlayerSummaries_ParsesPersonaState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"response": map[string]any{"players": []map[string]any{
+			{"steamid": "76500000000000000", "personastate": 3}, // away, no game
+			{"steamid": "76500000000000001", "personastate": 0}, // offline
+		}}})
+	}))
+	defer server.Close()
+
+	c := &Client{APIKey: "key", HTTPClient: http.DefaultClient, BaseURL: server.URL}
+	got, err := c.GetPlayerSummaries(context.Background(), []string{"76500000000000000", "76500000000000001"})
+	if err != nil {
+		t.Fatalf("GetPlayerSummaries: %v", err)
+	}
+	// Anything but 0 counts as online — away/busy/snooze all mean the
+	// account is connected to Steam, just not at the keyboard.
+	if !got["76500000000000000"].Online {
+		t.Fatalf("got %+v, want away (personastate 3) to count as online", got["76500000000000000"])
+	}
+	if got["76500000000000001"].Online {
+		t.Fatalf("got %+v, want personastate 0 to be offline", got["76500000000000001"])
+	}
+}

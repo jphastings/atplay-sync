@@ -39,6 +39,13 @@ func (h *PresenceHandler) HandlePresenceUpdate(s *discordgo.Session, e *discordg
 		return
 	}
 
+	// Anything but a genuine offline (or invisible, which Discord reports
+	// to us as offline) means they're connected — idle and dnd included.
+	online := e.Status != discordgo.StatusOffline && e.Status != discordgo.StatusInvisible
+	if err := appdb.SetSourceOnline(ctx, h.Conn, claim.DID, appdb.DiscordSource, online); err != nil {
+		slog.Error("recording discord online state failed", "discord_id", e.User.ID, "err", err) // not fatal to the session update below
+	}
+
 	var gameKey, rawName string
 	var extra appsync.SessionExtra
 	playing := false

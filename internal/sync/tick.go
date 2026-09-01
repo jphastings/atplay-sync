@@ -95,6 +95,10 @@ func RunTick(ctx context.Context, conn *sql.DB, steamAPI SteamAPI, resolver Game
 			slog.Warn("steam omitted account from response, skipping this tick", "steam_id", steamID, "did", did)
 			continue
 		}
+		if err := appdb.SetSourceOnline(ctx, conn, did, appdb.SteamSource, summary.Online); err != nil {
+			slog.Error("recording steam online state failed", "did", did, "err", err) // not fatal to this account's session update
+		}
+
 		gameKey := summary.GameID
 		if gameKey == "" && summary.GameExtraInfo != "" {
 			// Steam reports some non-Steam shortcuts by name only, with no

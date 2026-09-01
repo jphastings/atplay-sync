@@ -278,3 +278,29 @@ func TestRunTick_RateLimited_ExhaustsBudgetAndReturnsError(t *testing.T) {
 		t.Fatal("budget.Reserve(1) after a 429 = true, want false (Exhaust should have zeroed it)")
 	}
 }
+
+func TestRunTick_RecordsOnlineStateEvenWithNoGame(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+	seedEligibleUser(t, conn, "did:plc:a", "765")
+
+	steamAPI := fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765", Online: true}}}
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, &fakeWriter{}, steam.NewBudget(1000), time.Now()); err != nil {
+		t.Fatalf("RunTick: %v", err)
+	}
+	online, err := appdb.IsSourceOnline(ctx, conn, "did:plc:a", appdb.SteamSource)
+	if err != nil || !online {
+		t.Fatalf("IsSourceOnline = %v, %v, want true (online, just not playing)", online, err)
+	}
+
+	// Going offline has to be recorded too, or the dot would claim they're
+	// still online forever.
+	steamAPI = fakeSteamAPI{summaries: map[string]steam.PlayerSummary{"765": {SteamID: "765", Online: false}}}
+	if err := RunTick(ctx, conn, steamAPI, fakeResolver{}, &fakeWriter{}, steam.NewBudget(1000), time.Now()); err != nil {
+		t.Fatalf("RunTick: %v", err)
+	}
+	online, err = appdb.IsSourceOnline(ctx, conn, "did:plc:a", appdb.SteamSource)
+	if err != nil || online {
+		t.Fatalf("IsSourceOnline = %v, %v, want false", online, err)
+	}
+}

@@ -60,18 +60,24 @@ type SourceOutcome struct {
 }
 
 const (
-	// OutcomeSynced: this source's session resolved to a game, and it was
-	// the highest-priority source to claim that game's rkey — its report
-	// is what created/maintains the live games.atmosphere.status record.
-	OutcomeSynced = "synced"
-	// OutcomeDuplicate: this source's session resolved to the same game as
-	// a higher-priority source, so it's a valid match but isn't the one
-	// driving the published record.
-	OutcomeDuplicate = "duplicate"
+	// OutcomeOffline: the platform says this account isn't connected, so
+	// there's nothing it could be telling us. Distinct from having no
+	// outcome at all, which means the source is disabled or unlinked.
+	OutcomeOffline = "offline"
+	// OutcomeIdle: connected to the platform, but running nothing.
+	OutcomeIdle = "idle"
 	// OutcomeUnknown: this source has a session, but its reported game
 	// never resolved to a cartridge game — nothing is or can be published
 	// for it, but the raw reported name is still worth showing.
 	OutcomeUnknown = "unknown"
+	// OutcomeMatched: this source's session resolved to the same game as a
+	// higher-priority source, so we understand it perfectly well — it just
+	// isn't the report driving the published record.
+	OutcomeMatched = "matched"
+	// OutcomeSynced: as OutcomeMatched, but this is the source that claimed
+	// the game's rkey, so its report is what created/maintains the live
+	// games.atmosphere.status record.
+	OutcomeSynced = "synced"
 )
 
 // Broadcaster pushes a did's just-computed sync outcomes out to whatever's
@@ -86,10 +92,12 @@ type Broadcaster interface {
 // Reconcile has always done — and returns both what it always returned
 // (desired, for the PDS diff/write below) and, alongside it, a per-source
 // classification (outcomes) of what each source is doing with what it's
-// reporting: driving the published record (synced), a valid match superseded
-// by a higher-priority source (duplicate), or unresolvable (unknown, with
-// the source's own raw reported name since there's no cartridge game name to
-// use instead). A source with no active session is simply absent from both.
+// reporting: driving the published record (synced), an equally-good match
+// superseded by a higher-priority source (matched), unresolvable (unknown,
+// carrying the source's own raw reported name since there's no cartridge
+// name to use instead), or not playing at all — which still distinguishes
+// connected-but-idle (idle) from the platform saying they're gone
+// (offline). Only a disabled or unlinked source is absent entirely.
 func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, did string, now time.Time) (map[string]ActorStatus, []SourceOutcome, error) {
 	sources, err := appdb.ListEnabledSourcesByPriority(ctx, conn, did)
 	if err != nil {
@@ -104,6 +112,17 @@ func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, di
 			return nil, nil, err
 		}
 		if row == nil {
+			// Nothing playing — but "connected, running nothing" and "the
+			// platform says they're offline" are different things to show.
+			online, err := appdb.IsSourceOnline(ctx, conn, did, source)
+			if err != nil {
+				return nil, nil, err
+			}
+			status := OutcomeOffline
+			if online {
+				status = OutcomeIdle
+			}
+			outcomes = append(outcomes, SourceOutcome{Source: source, Status: status})
 			continue
 		}
 		game, err := resolver.GetGameBySteamID(ctx, row.GameKey)
@@ -119,7 +138,7 @@ func ComputeDesired(ctx context.Context, conn *sql.DB, resolver GameResolver, di
 			continue // malformed game URI — shouldn't happen from cartridge, but never publish garbage
 		}
 		if _, claimed := desired[rkey]; claimed {
-			outcomes = append(outcomes, SourceOutcome{Source: source, Status: OutcomeDuplicate, GameName: game.Name})
+			outcomes = append(outcomes, SourceOutcome{Source: source, Status: OutcomeMatched, GameName: game.Name})
 			continue // a higher-priority source already claimed this game
 		}
 		status := ActorStatus{

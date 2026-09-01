@@ -26,6 +26,10 @@ type PlayerSummary struct {
 	SteamID       string
 	GameID        string
 	GameExtraInfo string
+	// Online is Steam's personastate, reduced to the only distinction this
+	// app cares about: anything other than 0 (offline) means the account is
+	// connected to Steam — away, busy and snooze all still count.
+	Online bool
 }
 
 type Client struct {
@@ -44,6 +48,7 @@ type summariesResponse struct {
 			SteamID       string `json:"steamid"`
 			GameID        string `json:"gameid"`
 			GameExtraInfo string `json:"gameextrainfo"`
+			PersonaState  int    `json:"personastate"`
 		} `json:"players"`
 	} `json:"response"`
 }
@@ -81,7 +86,7 @@ func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) (map
 		}
 
 		for _, p := range parsed.Response.Players {
-			result[p.SteamID] = PlayerSummary{SteamID: p.SteamID, GameID: p.GameID, GameExtraInfo: p.GameExtraInfo}
+			result[p.SteamID] = PlayerSummary{SteamID: p.SteamID, GameID: p.GameID, GameExtraInfo: p.GameExtraInfo, Online: p.PersonaState != 0}
 		}
 	}
 

@@ -198,3 +198,47 @@ func mustUpsertClaim(t *testing.T, conn *sql.DB, did string) {
 		t.Fatalf("UpsertClaim(%s): %v", did, err)
 	}
 }
+
+func TestSetSourceOnline_RoundTrip(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+
+	if err := SetEnabled(ctx, conn, "did:plc:a", SteamSource, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+	if err := SetSourceOnline(ctx, conn, "did:plc:a", SteamSource, true); err != nil {
+		t.Fatalf("SetSourceOnline: %v", err)
+	}
+
+	online, err := IsSourceOnline(ctx, conn, "did:plc:a", SteamSource)
+	if err != nil || !online {
+		t.Fatalf("IsSourceOnline = %v, %v, want true", online, err)
+	}
+
+	if err := SetSourceOnline(ctx, conn, "did:plc:a", SteamSource, false); err != nil {
+		t.Fatalf("SetSourceOnline(false): %v", err)
+	}
+	online, err = IsSourceOnline(ctx, conn, "did:plc:a", SteamSource)
+	if err != nil || online {
+		t.Fatalf("IsSourceOnline = %v, %v, want false", online, err)
+	}
+}
+
+func TestIsSourceOnline_DefaultsFalse(t *testing.T) {
+	ctx := context.Background()
+	conn := openTestDB(t)
+
+	// Never polled, and a source with no row at all: both are "we have no
+	// reason to believe they're online".
+	if err := SetEnabled(ctx, conn, "did:plc:a", SteamSource, true); err != nil {
+		t.Fatalf("SetEnabled: %v", err)
+	}
+	online, err := IsSourceOnline(ctx, conn, "did:plc:a", SteamSource)
+	if err != nil || online {
+		t.Fatalf("IsSourceOnline (never set) = %v, %v, want false", online, err)
+	}
+	online, err = IsSourceOnline(ctx, conn, "did:plc:nobody", DiscordSource)
+	if err != nil || online {
+		t.Fatalf("IsSourceOnline (no row) = %v, %v, want false", online, err)
+	}
+}

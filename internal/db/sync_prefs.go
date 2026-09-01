@@ -34,6 +34,45 @@ func IsEnabled(ctx context.Context, conn *sql.DB, did, source string) (bool, err
 	return enabled == 1, nil
 }
 
+// SetSourceOnline records whether the platform itself currently considers
+// this user online — distinct from whether they're playing anything, which
+// is session_starts' job. It lives here rather than in session_starts
+// precisely because it's most interesting when there's no session at all.
+//
+// Written by whatever talks to the platform: Steam's tick (every poll) and
+// Discord's presence handler (every event, plus the gateway's full
+// presence snapshot on reconnect).
+// ponytail: no staleness expiry — while either of those is running this is
+// self-correcting, but a dead Steam ticker will leave a stale "online"
+// showing. A time-based expiry can't work for Discord, which only pushes
+// on change; revisit per-source if the stale case ever bites.
+func SetSourceOnline(ctx context.Context, conn *sql.DB, did, source string, online bool) error {
+	o := 0
+	if online {
+		o = 1
+	}
+	_, err := conn.ExecContext(ctx, `
+		INSERT INTO sync_prefs (did, source, enabled, priority, online) VALUES (?, ?, 0, ?, ?)
+		ON CONFLICT(did, source) DO UPDATE SET online = excluded.online
+	`, did, source, defaultPriority[source], o)
+	return err
+}
+
+// IsSourceOnline reports the platform's last-known online state. A source
+// we've never heard from — no row, or no poll yet — is not online: we have
+// no reason to believe otherwise.
+func IsSourceOnline(ctx context.Context, conn *sql.DB, did, source string) (bool, error) {
+	var online int
+	err := conn.QueryRowContext(ctx, `SELECT online FROM sync_prefs WHERE did = ? AND source = ?`, did, source).Scan(&online)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return online == 1, nil
+}
+
 // ListEnabledDIDs returns DIDs eligible to sync a given source right now:
 // user intent (sync_prefs) AND claim validity (claims) both hold.
 func ListEnabledDIDs(ctx context.Context, conn *sql.DB, source string) ([]string, error) {
