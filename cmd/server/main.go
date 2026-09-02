@@ -126,6 +126,9 @@ func main() {
 
 	writer := &sync.ATProtoWriter{Resumer: resumer, Conn: conn, Dir: dir}
 	liveHub := livestate.NewHub()
+	// Keeps idle sockets from being culled by anything in between, and
+	// re-asserts state so a missed push can't leave a browser stale.
+	go liveHub.Heartbeat(context.Background(), livestate.HeartbeatInterval)
 	reconciler := &sync.Reconciler{Conn: conn, Resolver: cartridgeClient, Writer: writer, Broadcaster: liveHub}
 
 	presenceHandler := &discord.PresenceHandler{Conn: conn, GuildID: cfg.DiscordGuildID, Games: gameIndex, Reconciler: reconciler}
