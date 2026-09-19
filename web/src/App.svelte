@@ -22,7 +22,14 @@
   })
 </script>
 
-{#if appState.me === null}
+{#if appState.meFailed}
+  <div class="screen">
+    <div class="marquee">
+      <section class="hero hero--error" aria-live="polite">Couldn't reach At Play Sync.</section>
+      <button class="btn btn-ghost" onclick={() => { appState.meFailed = false; loadMe() }}>Retry</button>
+    </div>
+  </div>
+{:else if appState.me === null}
   <SignIn />
 {:else if appState.me}
   <SignedIn />

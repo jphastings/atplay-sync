@@ -11,7 +11,7 @@ export interface Me {
 }
 
 export async function getMe(): Promise<Me | null> {
-  const res = await fetch('/api/me')
+  const res = await fetch('/api/me', { signal: AbortSignal.timeout(10_000) })
   if (res.status === 401) return null
   if (!res.ok) throw new Error(`GET /api/me: ${res.status}`)
   return res.json()

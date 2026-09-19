@@ -17,11 +17,13 @@ export type Source = (typeof KNOWN_SOURCES)[number]
 // every future file that imports it, not just the one that already hit it.
 export const appState = $state<{
   me: Me | null | undefined
+  meFailed: boolean
   liveStatuses: LiveStatus[] | 'error' | undefined
   handle: string | undefined
   sourceOutcomes: Partial<Record<Source, SourceOutcome>>
 }>({
   me: undefined,
+  meFailed: false,
   liveStatuses: undefined,
   handle: undefined,
   sourceOutcomes: {},
@@ -57,24 +59,33 @@ async function currentLiveStatuses(did: string): Promise<LiveStatus[] | 'error'>
 }
 
 export async function loadMe(): Promise<void> {
-  const me = await currentMe()
+  appState.meFailed = false
+  let me: Me | null
+  try {
+    me = await currentMe()
+  } catch {
+    appState.meFailed = true
+    return
+  }
   if (!me) {
     appState.me = null
     return
   }
+  appState.me = me
 
   const rechecks = [
     !me.steamSubject && recheckClaim(),
     !me.discordSubject && recheckDiscordClaim(),
   ].filter(Boolean) as Promise<void>[]
+  if (!rechecks.length) return
 
-  if (rechecks.length) {
-    await Promise.all(rechecks).catch(() => { })
-    const refreshed = await currentMe()
-    appState.me = refreshed ?? me
-    return
-  }
-  appState.me = me
+  await Promise.all(rechecks).catch(() => { })
+  const refreshed = await currentMe().catch(() => null)
+  // Merge in place instead of reassigning appState.me: App.svelte's effects
+  // key off the appState.me reference and would tear down/reopen both
+  // WebSockets on reassignment, whereas mutating the existing $state proxy
+  // only re-runs whatever reads the fields that actually changed.
+  if (refreshed) Object.assign(appState.me, refreshed)
 }
 
 export async function loadLiveStatuses(): Promise<void> {
